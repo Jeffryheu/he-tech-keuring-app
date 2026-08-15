@@ -1,4 +1,4 @@
-const CACHE_NAME = 'keuring-app-v1';
+const CACHE_NAME = 'keuring-app-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -6,6 +6,7 @@ const APP_SHELL = [
   './css/styles.css',
   './js/db.js',
   './js/checklists.js',
+  './js/app.js',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './assets/icons/apple-touch-icon.png',
