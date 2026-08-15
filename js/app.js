@@ -20,6 +20,25 @@ function setPath(obj, path, value) {
   target[lastKey] = value;
 }
 
+function compressImage(file, maxDim = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    const img = new Image();
+    reader.onload = () => { img.src = reader.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 async function route() {
   const hash = location.hash || '#/';
   const match = hash.match(/^#\/keuring\/(.+)$/);
@@ -95,12 +114,14 @@ async function renderForm(id) {
   const keuring = await DB.getKeuring(id);
   if (!keuring) { location.hash = '#/'; return; }
   const checklist = CHECKLISTS[keuring.type];
+  const fotos = await DB.getFotosByKeuring(keuring.id);
+  const fotoUrlMap = new Map(fotos.map((foto) => [foto.id, URL.createObjectURL(foto.blob)]));
   $app.innerHTML = `
     <section class="formulier">
       <a href="#/" class="terug">&larr; Terug</a>
       <h2>${escapeHtml(checklist.label)} <span class="subtitel">${escapeHtml(checklist.subtitel)}</span></h2>
       ${renderKopVelden(keuring)}
-      ${checklist.categorieen.map((cat) => renderCategorie(keuring, cat)).join('')}
+      ${checklist.categorieen.map((cat) => renderCategorie(keuring, cat, fotoUrlMap)).join('')}
       <label class="veld">
         <span>Algemene opmerkingen</span>
         <textarea data-veld="algemeneOpmerkingen">${escapeHtml(keuring.algemeneOpmerkingen)}</textarea>
@@ -132,19 +153,25 @@ function renderKopVelden(keuring) {
   `;
 }
 
-function renderCategorie(keuring, categorie) {
+function renderCategorie(keuring, categorie, fotoUrlMap) {
   const items = keuring.items.filter((item) => item.categorie === categorie.naam);
   return `
     <fieldset class="categorie">
       <legend>${escapeHtml(categorie.naam)}</legend>
-      ${items.map((item) => renderItem(keuring, item)).join('')}
+      ${items.map((item) => renderItem(keuring, item, fotoUrlMap)).join('')}
     </fieldset>
   `;
 }
 
-function renderItem(keuring, item) {
+function renderItem(keuring, item, fotoUrlMap) {
   const itemIndex = keuring.items.indexOf(item);
   const resultaten = ['ok', 'afgekeurd', 'n.v.t.'];
+  const fotos = item.fotoIds.map((fotoId) => `
+    <span class="foto-thumb">
+      <img src="${fotoUrlMap.get(fotoId)}" alt="Foto bij item">
+      <button type="button" class="foto-thumb__verwijder" data-verwijder-foto="${fotoId}" data-item-index="${itemIndex}">&times;</button>
+    </span>
+  `).join('');
   return `
     <div class="item" data-item-index="${itemIndex}">
       <p class="item__omschrijving">${escapeHtml(item.omschrijving)}</p>
@@ -157,6 +184,11 @@ function renderItem(keuring, item) {
         `).join('')}
       </div>
       <textarea class="item__opmerking" placeholder="Opmerking" data-veld="items.${itemIndex}.opmerking">${escapeHtml(item.opmerking)}</textarea>
+      <div class="item__fotos">${fotos}</div>
+      <label class="btn btn--klein">
+        Foto toevoegen
+        <input type="file" accept="image/*" capture="environment" class="item__foto-input" data-item-index="${itemIndex}" hidden>
+      </label>
     </div>
   `;
 }
@@ -184,6 +216,31 @@ function bindFormEvents(keuring) {
     if (!confirm('Deze keuring verwijderen? Dit kan niet ongedaan gemaakt worden.')) return;
     await DB.deleteKeuring(keuring.id);
     location.hash = '#/';
+  });
+
+  $form.addEventListener('change', async (event) => {
+    if (!event.target.classList.contains('item__foto-input')) return;
+    const file = event.target.files[0];
+    if (!file) return;
+    const itemIndex = Number(event.target.dataset.itemIndex);
+    const blob = await compressImage(file);
+    const foto = { id: crypto.randomUUID(), keuringId: keuring.id, blob, gemaakt: new Date().toISOString() };
+    await DB.saveFoto(foto);
+    keuring.items[itemIndex].fotoIds.push(foto.id);
+    keuring.bijgewerkt = new Date().toISOString();
+    await DB.saveKeuring(keuring);
+    renderForm(keuring.id);
+  });
+
+  $form.addEventListener('click', async (event) => {
+    const fotoId = event.target.dataset.verwijderFoto;
+    if (!fotoId) return;
+    const itemIndex = Number(event.target.dataset.itemIndex);
+    await DB.deleteFoto(fotoId);
+    keuring.items[itemIndex].fotoIds = keuring.items[itemIndex].fotoIds.filter((id) => id !== fotoId);
+    keuring.bijgewerkt = new Date().toISOString();
+    await DB.saveKeuring(keuring);
+    renderForm(keuring.id);
   });
 }
 
