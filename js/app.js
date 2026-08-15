@@ -1,5 +1,7 @@
 import * as DB from './db.js';
 import { CHECKLISTS, buildInitialItems } from './checklists.js';
+import { genereerRapport } from './pdf.js';
+import { deelPdf } from './share.js';
 
 const $app = document.getElementById('app');
 
@@ -209,7 +211,12 @@ function bindFormEvents(keuring) {
     keuring.status = 'afgerond';
     keuring.bijgewerkt = new Date().toISOString();
     await DB.saveKeuring(keuring);
+    await deelRapport(keuring);
     renderForm(keuring.id);
+  });
+
+  $form.querySelector('[data-actie="deel-opnieuw"]')?.addEventListener('click', async () => {
+    await deelRapport(keuring);
   });
 
   $form.querySelector('[data-actie="verwijderen"]')?.addEventListener('click', async () => {
@@ -242,6 +249,21 @@ function bindFormEvents(keuring) {
     await DB.saveKeuring(keuring);
     renderForm(keuring.id);
   });
+}
+
+async function deelRapport(keuring) {
+  const fotos = await DB.getFotosByKeuring(keuring.id);
+  const naamDeel = keuring.klant?.naam || keuring.werkzaamheden || 'rapport';
+  const bestandsnaam = `${keuring.type}-${keuring.datum}-${naamDeel.replace(/\s+/g, '-')}.pdf`;
+  try {
+    const pdfBytes = await genereerRapport(keuring, fotos);
+    await deelPdf(pdfBytes, bestandsnaam);
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      alert('Delen is mislukt. Probeer het later opnieuw via de knop "Deel opnieuw".');
+      console.error(err);
+    }
+  }
 }
 
 if ('serviceWorker' in navigator) {

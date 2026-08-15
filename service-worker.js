@@ -1,4 +1,4 @@
-const CACHE_NAME = 'keuring-app-v3';
+const CACHE_NAME = 'keuring-app-v4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,6 +9,7 @@ const APP_SHELL = [
   './js/app.js',
   './vendor/pdf-lib.min.js',
   './js/pdf.js',
+  './js/share.js',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './assets/icons/apple-touch-icon.png',
