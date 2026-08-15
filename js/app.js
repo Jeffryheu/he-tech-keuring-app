@@ -27,16 +27,19 @@ function compressImage(file, maxDim = 1600, quality = 0.8) {
     const reader = new FileReader();
     const img = new Image();
     reader.onload = () => { img.src = reader.result; };
-    reader.onerror = reject;
+    reader.onerror = () => reject(new Error('Kon bestand niet lezen'));
     img.onload = () => {
       const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Kon afbeelding niet comprimeren'));
+      }, 'image/jpeg', quality);
     };
-    img.onerror = reject;
+    img.onerror = () => reject(new Error('Bestand is geen geldige afbeelding'));
     reader.readAsDataURL(file);
   });
 }
@@ -145,6 +148,19 @@ function renderKopVelden(keuring) {
       <label class="veld"><span>Werkzaamheden</span><input type="text" data-veld="werkzaamheden" value="${escapeHtml(keuring.werkzaamheden)}"></label>
       <label class="veld"><span>Betrokkenen</span><input type="text" data-veld="betrokkenen" value="${escapeHtml(keuring.betrokkenen)}"></label>
       <label class="veld"><span>Datum</span><input type="date" data-veld="datum" value="${escapeHtml(keuring.datum)}"></label>
+      <div class="veld">
+        <span>Ga/geen-ga beslissing</span>
+        <div class="item__resultaten">
+          <label class="resultaat resultaat--ga">
+            <input type="radio" name="gaGeenGa" value="ga" data-veld="gaGeenGa" ${keuring.gaGeenGa === 'ga' ? 'checked' : ''}>
+            <span>Ga</span>
+          </label>
+          <label class="resultaat resultaat--geenga">
+            <input type="radio" name="gaGeenGa" value="geen-ga" data-veld="gaGeenGa" ${keuring.gaGeenGa === 'geen-ga' ? 'checked' : ''}>
+            <span>Geen ga</span>
+          </label>
+        </div>
+      </div>
     `;
   }
   return `
@@ -229,14 +245,19 @@ function bindFormEvents(keuring) {
     if (!event.target.classList.contains('item__foto-input')) return;
     const file = event.target.files[0];
     if (!file) return;
-    const itemIndex = Number(event.target.dataset.itemIndex);
-    const blob = await compressImage(file);
-    const foto = { id: crypto.randomUUID(), keuringId: keuring.id, blob, gemaakt: new Date().toISOString() };
-    await DB.saveFoto(foto);
-    keuring.items[itemIndex].fotoIds.push(foto.id);
-    keuring.bijgewerkt = new Date().toISOString();
-    await DB.saveKeuring(keuring);
-    renderForm(keuring.id);
+    try {
+      const itemIndex = Number(event.target.dataset.itemIndex);
+      const blob = await compressImage(file);
+      const foto = { id: crypto.randomUUID(), keuringId: keuring.id, blob, gemaakt: new Date().toISOString() };
+      await DB.saveFoto(foto);
+      keuring.items[itemIndex].fotoIds.push(foto.id);
+      keuring.bijgewerkt = new Date().toISOString();
+      await DB.saveKeuring(keuring);
+      renderForm(keuring.id);
+    } catch (err) {
+      alert('Foto toevoegen is mislukt. Probeer het opnieuw.');
+      console.error(err);
+    }
   });
 
   $form.addEventListener('click', async (event) => {

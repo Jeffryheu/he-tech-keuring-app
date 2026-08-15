@@ -9,6 +9,18 @@ const ROOD = rgb(0.7, 0.1, 0.1);
 const A4 = [595.28, 841.89];
 const MARGE = 50;
 
+function saniteerVoorPdf(tekst, font) {
+  const vlak = String(tekst ?? '').replace(/\r\n|\r|\n/g, ' ');
+  try {
+    font.widthOfTextAtSize(vlak, 1);
+    return vlak;
+  } catch {
+    return Array.from(vlak).map((ch) => {
+      try { font.widthOfTextAtSize(ch, 1); return ch; } catch { return '?'; }
+    }).join('');
+  }
+}
+
 function wrapText(tekst, font, size, maxWidth) {
   const woorden = String(tekst).split(' ');
   const regels = [];
@@ -56,8 +68,8 @@ export async function genereerRapport(keuring, fotos) {
 
   // Kopgegevens
   const kopregels = keuring.type === 'lmra'
-    ? [`Werkzaamheden: ${keuring.werkzaamheden || '-'}`, `Betrokkenen: ${keuring.betrokkenen || '-'}`, `Datum: ${keuring.datum}`]
-    : [`Klant: ${keuring.klant.naam || '-'}`, `Adres: ${keuring.klant.adres || '-'}`, `Datum: ${keuring.datum}`, `Monteur: ${keuring.monteur || '-'}`];
+    ? [`Werkzaamheden: ${saniteerVoorPdf(keuring.werkzaamheden, font) || '-'}`, `Betrokkenen: ${saniteerVoorPdf(keuring.betrokkenen, font) || '-'}`, `Datum: ${keuring.datum}`]
+    : [`Klant: ${saniteerVoorPdf(keuring.klant.naam, font) || '-'}`, `Adres: ${saniteerVoorPdf(keuring.klant.adres, font) || '-'}`, `Datum: ${keuring.datum}`, `Monteur: ${saniteerVoorPdf(keuring.monteur, font) || '-'}`];
   kopregels.forEach((regel) => {
     page.drawText(regel, { x: MARGE, y, size: 11, font, color: INKT });
     y -= 16;
@@ -88,7 +100,7 @@ export async function genereerRapport(keuring, fotos) {
       y -= omschrijvingRegels.length * 13;
 
       if (item.opmerking) {
-        const opmerkingRegels = wrapText(`Opmerking: ${item.opmerking}`, font, 9, breedte - 10);
+        const opmerkingRegels = wrapText(`Opmerking: ${saniteerVoorPdf(item.opmerking, font)}`, font, 9, breedte - 10);
         zorgVoorRuimte(opmerkingRegels.length * 12);
         opmerkingRegels.forEach((regel, i) => page.drawText(regel, { x: MARGE + 10, y: y - i * 12, size: 9, font, color: GRIJS }));
         y -= opmerkingRegels.length * 12;
@@ -112,7 +124,7 @@ export async function genereerRapport(keuring, fotos) {
   }
 
   if (keuring.algemeneOpmerkingen) {
-    const regels = wrapText(keuring.algemeneOpmerkingen, font, 10, breedte);
+    const regels = wrapText(saniteerVoorPdf(keuring.algemeneOpmerkingen, font), font, 10, breedte);
     zorgVoorRuimte(regels.length * 13 + 20);
     page.drawText('Algemene opmerkingen', { x: MARGE, y, size: 12, font: fontBold, color: GROEN });
     y -= 16;
