@@ -21,6 +21,15 @@ function saniteerVoorPdf(tekst, font) {
   }
 }
 
+function truncateText(tekst, font, size, maxWidth) {
+  let vlak = String(tekst ?? '');
+  if (font.widthOfTextAtSize(vlak, size) <= maxWidth) return vlak;
+  while (vlak.length > 1 && font.widthOfTextAtSize(`${vlak}…`, size) > maxWidth) {
+    vlak = vlak.slice(0, -1);
+  }
+  return `${vlak}…`;
+}
+
 function wrapText(tekst, font, size, maxWidth) {
   const woorden = String(tekst).split(' ');
   const regels = [];
@@ -82,6 +91,63 @@ export async function genereerRapport(keuring, fotos) {
     x: MARGE, y, size: 11, font: fontBold, color: aantalAfgekeurd > 0 ? ROOD : GROEN,
   });
   y -= 24;
+
+  // Groepentabel
+  if (keuring.type !== 'lmra' && keuring.groepen && keuring.groepen.length > 0) {
+    const KOLOMMEN = [
+      { label: 'Groep', x: 0, w: 22 },
+      { label: 'Naam', x: 24, w: 80 },
+      { label: 'L1-PE', x: 106, w: 42 },
+      { label: 'L2-PE', x: 150, w: 42 },
+      { label: 'L3-PE', x: 194, w: 42 },
+      { label: 'N-PE', x: 238, w: 42 },
+      { label: 'Zs (Ohm)', x: 282, w: 40 },
+      { label: 'Zek/Ø', x: 324, w: 65 },
+      { label: 'Aardlek', x: 391, w: 104 },
+    ];
+    zorgVoorRuimte(40);
+    page.drawText('Groepen & meetgegevens', { x: MARGE, y, size: 13, font: fontBold, color: GROEN });
+    y -= 18;
+    page.drawText('Isolatieweerstand in MOhm', { x: MARGE, y, size: 8, font, color: GRIJS });
+    y -= 12;
+    KOLOMMEN.forEach((kol) => page.drawText(kol.label, { x: MARGE + kol.x, y, size: 8, font: fontBold, color: INKT }));
+    y -= 4;
+    page.drawLine({ start: { x: MARGE, y }, end: { x: MARGE + breedte, y }, thickness: 0.5, color: GRIJS });
+    y -= 12;
+
+    for (const groep of keuring.groepen) {
+      zorgVoorRuimte(24);
+      const driefase = groep.fase === '3-fase';
+      const zekDoorsnede = [groep.zekering ? `${groep.zekering}A` : '', groep.aderdoorsnede ? `${groep.aderdoorsnede}mm²` : '']
+        .filter(Boolean).join(' / ');
+      const aardlekTekst = groep.aardlekAanwezig
+        ? `${groep.aardlek.iDeltaN || '?'}mA / ${groep.aardlek.tijd || '?'}ms ${groep.aardlek.testknop === 'afgekeurd' ? 'FOUT' : groep.aardlek.testknop === 'ok' ? 'OK' : ''}`
+        : '-';
+      const waarden = [
+        String(groep.nummer ?? ''),
+        truncateText(saniteerVoorPdf(groep.naam, font), font, 8, 78),
+        groep.isolatie.l1pe || '',
+        driefase ? (groep.isolatie.l2pe || '') : '',
+        driefase ? (groep.isolatie.l3pe || '') : '',
+        groep.isolatie.npe || '',
+        groep.zs || '',
+        truncateText(zekDoorsnede, font, 8, 63),
+        truncateText(saniteerVoorPdf(aardlekTekst, font), font, 8, 102),
+      ];
+      const rijKleur = groep.aardlekAanwezig && groep.aardlek.testknop === 'afgekeurd' ? ROOD : INKT;
+      KOLOMMEN.forEach((kol, i) => page.drawText(waarden[i], { x: MARGE + kol.x, y, size: 8, font, color: rijKleur }));
+      y -= 12;
+
+      if (groep.opmerking) {
+        const opmerkingRegels = wrapText(`Opmerking: ${saniteerVoorPdf(groep.opmerking, font)}`, font, 8, breedte - 10);
+        zorgVoorRuimte(opmerkingRegels.length * 11);
+        opmerkingRegels.forEach((regel, i) => page.drawText(regel, { x: MARGE + 10, y: y - i * 11, size: 8, font, color: GRIJS }));
+        y -= opmerkingRegels.length * 11;
+      }
+      y -= 4;
+    }
+    y -= 12;
+  }
 
   // Items per categorie
   for (const categorie of checklist.categorieen) {

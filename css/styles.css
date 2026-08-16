@@ -186,3 +186,18 @@ h2 { margin: 0 0 12px; }
 }
 
 .formulier__acties { display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
+
+.groepen .veld--aantal-groepen { max-width: 200px; }
+.groep {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 14px;
+  background: var(--color-surface-tint);
+}
+.groep__titel { margin: 0 0 8px; font-weight: 700; }
+.groep__subkop { margin: 10px 0 6px; font-weight: 600; font-size: 0.85rem; color: var(--color-muted); }
+.groep__rij { display: flex; gap: 10px; flex-wrap: wrap; }
+.groep__rij .veld { flex: 1 1 100px; min-width: 100px; }
+.groep__aardlek-toggle { display: flex; align-items: center; gap: 8px; margin: 10px 0; cursor: pointer; }
+.groep__aardlek-toggle input { margin: 0; }

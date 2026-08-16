@@ -1,5 +1,5 @@
 import * as DB from './db.js';
-import { CHECKLISTS, buildInitialItems } from './checklists.js';
+import { CHECKLISTS, buildInitialItems, buildGroep } from './checklists.js';
 import { genereerRapport } from './pdf.js';
 import { deelPdf } from './share.js';
 
@@ -104,6 +104,7 @@ async function startNieuweKeuring(type) {
     datum: nu.slice(0, 10),
     monteur: '',
     items: buildInitialItems(type),
+    groepen: [],
     algemeneOpmerkingen: '',
     aangemaakt: nu,
     bijgewerkt: nu,
@@ -126,6 +127,7 @@ async function renderForm(id) {
       <a href="#/" class="terug">&larr; Terug</a>
       <h2>${escapeHtml(checklist.label)} <span class="subtitel">${escapeHtml(checklist.subtitel)}</span></h2>
       ${renderKopVelden(keuring)}
+      ${keuring.type !== 'lmra' ? renderGroepenSectie(keuring) : ''}
       ${checklist.categorieen.map((cat) => renderCategorie(keuring, cat, fotoUrlMap)).join('')}
       <label class="veld">
         <span>Algemene opmerkingen</span>
@@ -168,6 +170,66 @@ function renderKopVelden(keuring) {
     <label class="veld"><span>Adres</span><input type="text" data-veld="klant.adres" value="${escapeHtml(keuring.klant.adres)}"></label>
     <label class="veld"><span>Datum</span><input type="date" data-veld="datum" value="${escapeHtml(keuring.datum)}"></label>
     <label class="veld"><span>Monteur</span><input type="text" data-veld="monteur" value="${escapeHtml(keuring.monteur)}"></label>
+  `;
+}
+
+function renderGroepenSectie(keuring) {
+  const groepen = keuring.groepen || [];
+  return `
+    <fieldset class="categorie groepen">
+      <legend>Groepen &amp; meetgegevens</legend>
+      <label class="veld veld--aantal-groepen">
+        <span>Aantal groepen</span>
+        <input type="number" min="0" inputmode="numeric" data-actie="aantal-groepen" value="${groepen.length || ''}">
+      </label>
+      ${groepen.map((groep, i) => renderGroep(groep, i)).join('')}
+    </fieldset>
+  `;
+}
+
+function renderGroep(groep, i) {
+  const driefase = groep.fase === '3-fase';
+  return `
+    <div class="groep" data-groep-index="${i}">
+      <p class="groep__titel">Groep ${groep.nummer}</p>
+      <label class="veld"><span>Naam/omschrijving</span><input type="text" data-veld="groepen.${i}.naam" value="${escapeHtml(groep.naam)}"></label>
+      <label class="veld">
+        <span>Fase</span>
+        <select class="groep__fase" data-groep-index="${i}">
+          <option value="1-fase" ${!driefase ? 'selected' : ''}>1-fase</option>
+          <option value="3-fase" ${driefase ? 'selected' : ''}>3-fase</option>
+        </select>
+      </label>
+      <div class="groep__rij">
+        <label class="veld"><span>Zekering/automaat (A)</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.zekering" value="${escapeHtml(groep.zekering)}"></label>
+        <label class="veld"><span>Aderdoorsnede (mm²)</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.aderdoorsnede" value="${escapeHtml(groep.aderdoorsnede)}"></label>
+      </div>
+      <p class="groep__subkop">Isolatieweerstand (MΩ)</p>
+      <div class="groep__rij">
+        <label class="veld"><span>L1-PE</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.isolatie.l1pe" value="${escapeHtml(groep.isolatie.l1pe)}"></label>
+        <label class="veld"><span>N-PE</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.isolatie.npe" value="${escapeHtml(groep.isolatie.npe)}"></label>
+        ${driefase ? `
+          <label class="veld"><span>L2-PE</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.isolatie.l2pe" value="${escapeHtml(groep.isolatie.l2pe)}"></label>
+          <label class="veld"><span>L3-PE</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.isolatie.l3pe" value="${escapeHtml(groep.isolatie.l3pe)}"></label>
+        ` : ''}
+      </div>
+      <label class="veld"><span>Lusimpedantie Zs (Ω)</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.zs" value="${escapeHtml(groep.zs)}"></label>
+      <label class="groep__aardlek-toggle">
+        <input type="checkbox" class="groep__aardlek-aanwezig" data-groep-index="${i}" ${groep.aardlekAanwezig ? 'checked' : ''}>
+        <span>Aardlekschakelaar op deze groep</span>
+      </label>
+      ${groep.aardlekAanwezig ? `
+        <div class="groep__rij">
+          <label class="veld"><span>I∆n (mA)</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.aardlek.iDeltaN" value="${escapeHtml(groep.aardlek.iDeltaN)}"></label>
+          <label class="veld"><span>Aanspreektijd (ms)</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.aardlek.tijd" value="${escapeHtml(groep.aardlek.tijd)}"></label>
+        </div>
+        <div class="item__resultaten">
+          <label class="resultaat resultaat--ok"><input type="radio" name="aardlek-testknop-${i}" value="ok" data-veld="groepen.${i}.aardlek.testknop" ${groep.aardlek.testknop === 'ok' ? 'checked' : ''}><span>testknop ok</span></label>
+          <label class="resultaat resultaat--afgekeurd"><input type="radio" name="aardlek-testknop-${i}" value="afgekeurd" data-veld="groepen.${i}.aardlek.testknop" ${groep.aardlek.testknop === 'afgekeurd' ? 'checked' : ''}><span>testknop afgekeurd</span></label>
+        </div>
+      ` : ''}
+      <textarea class="item__opmerking" placeholder="Opmerking" data-veld="groepen.${i}.opmerking">${escapeHtml(groep.opmerking)}</textarea>
+    </div>
   `;
 }
 
@@ -245,6 +307,38 @@ function bindFormEvents(keuring) {
     if (!confirm('Deze keuring verwijderen? Dit kan niet ongedaan gemaakt worden.')) return;
     await DB.deleteKeuring(keuring.id);
     location.hash = '#/';
+  });
+
+  $form.addEventListener('change', async (event) => {
+    if (event.target.dataset.actie === 'aantal-groepen') {
+      const aantal = Math.max(0, Math.min(99, Number(event.target.value) || 0));
+      const huidig = keuring.groepen || [];
+      const nieuw = [];
+      for (let i = 0; i < aantal; i++) {
+        nieuw.push(huidig[i] || buildGroep(i + 1));
+      }
+      keuring.groepen = nieuw;
+      keuring.bijgewerkt = new Date().toISOString();
+      await DB.saveKeuring(keuring);
+      renderForm(keuring.id);
+      return;
+    }
+    if (event.target.classList.contains('groep__fase')) {
+      const groepIndex = Number(event.target.dataset.groepIndex);
+      keuring.groepen[groepIndex].fase = event.target.value;
+      keuring.bijgewerkt = new Date().toISOString();
+      await DB.saveKeuring(keuring);
+      renderForm(keuring.id);
+      return;
+    }
+    if (event.target.classList.contains('groep__aardlek-aanwezig')) {
+      const groepIndex = Number(event.target.dataset.groepIndex);
+      keuring.groepen[groepIndex].aardlekAanwezig = event.target.checked;
+      keuring.bijgewerkt = new Date().toISOString();
+      await DB.saveKeuring(keuring);
+      renderForm(keuring.id);
+      return;
+    }
   });
 
   $form.addEventListener('change', async (event) => {

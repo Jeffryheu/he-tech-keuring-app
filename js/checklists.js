@@ -116,6 +116,21 @@ export const CHECKLISTS = {
   },
 };
 
+export function buildGroep(nummer) {
+  return {
+    nummer,
+    naam: '',
+    fase: '1-fase',
+    zekering: '',
+    aderdoorsnede: '',
+    isolatie: { l1pe: '', l2pe: '', l3pe: '', npe: '' },
+    zs: '',
+    aardlekAanwezig: false,
+    aardlek: { iDeltaN: '', tijd: '', testknop: null },
+    opmerking: '',
+  };
+}
+
 export function buildInitialItems(type) {
   const items = [];
   CHECKLISTS[type].categorieen.forEach((categorie) => {
