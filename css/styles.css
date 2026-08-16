@@ -5,8 +5,8 @@
   --color-ink: #14181a;
   --color-muted: #5b6360;
   --color-border: #e3e6e3;
-  --color-green: #0b8a5c;
-  --color-green-dark: #086b48;
+  --color-green: #007a55;
+  --color-green-dark: #00593d;
   --color-green-tint: #e3f3ec;
   --color-rood: #b3271b;
   --color-on-green: #ffffff;
@@ -55,7 +55,12 @@ body {
   font-weight: 700;
   font-size: 1.1rem;
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
+
+.topbar__logo { width: 26px; height: 26px; flex-shrink: 0; }
 
 #app {
   max-width: 720px;
@@ -104,6 +109,36 @@ h2 { margin: 0 0 12px; }
   margin-bottom: 30px;
 }
 
+.keuze-kaart {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.keuze-kaart__icoon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--color-green-tint);
+  color: var(--color-green-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.keuze-kaart__icoon svg { width: 22px; height: 22px; }
+
+.keuze-kaart__tekst { display: flex; flex-direction: column; gap: 2px; }
+.keuze-kaart__titel { font-weight: 700; font-size: 1.05rem; color: var(--color-ink); }
+.keuze-kaart__subtitel { font-size: 0.85rem; color: var(--color-muted); }
+
 .geschiedenis__lijst {
   list-style: none;
   margin: 0;
@@ -129,7 +164,8 @@ h2 { margin: 0 0 12px; }
 .geschiedenis__item--afgerond .geschiedenis__status { background: var(--color-green-tint); color: var(--color-green-dark); }
 .geschiedenis__klant, .geschiedenis__datum { grid-column: 1; color: var(--color-muted); font-size: 0.9rem; }
 
-.terug { color: var(--color-muted); text-decoration: none; display: inline-block; margin-bottom: 10px; }
+.terug { color: var(--color-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 10px; }
+.terug svg { width: 20px; height: 20px; }
 .subtitel { font-weight: 400; color: var(--color-muted); font-size: 0.9rem; }
 
 .veld { display: block; margin-bottom: 14px; }
@@ -143,6 +179,7 @@ h2 { margin: 0 0 12px; }
   color: var(--color-ink);
   font-family: inherit;
   font-size: 1rem;
+  resize: none;
 }
 
 .categorie {
@@ -159,9 +196,34 @@ h2 { margin: 0 0 12px; }
 .item__omschrijving { margin: 0 0 8px; }
 
 .item__resultaten { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-.resultaat { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--color-border); border-radius: 999px; padding: 6px 12px; font-size: 0.9rem; cursor: pointer; }
-.resultaat input { margin: 0; }
-.resultaat--afgekeurd { border-color: var(--color-rood); }
+.resultaat {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  transition: background-color 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
+}
+.resultaat input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.resultaat--afgekeurd { border-color: var(--color-rood); color: var(--color-rood); }
+.resultaat--geenga { border-color: var(--color-rood); color: var(--color-rood); }
+.resultaat:has(input:checked) { background: var(--color-surface-tint); border-color: var(--color-muted); color: var(--color-ink); }
+.resultaat--ok:has(input:checked),
+.resultaat--ga:has(input:checked) { background: var(--color-green); border-color: var(--color-green); color: var(--color-on-green); }
+.resultaat--afgekeurd:has(input:checked),
+.resultaat--geenga:has(input:checked) { background: var(--color-rood); border-color: var(--color-rood); color: #fff; }
 
 .item__opmerking {
   width: 100%;
@@ -173,6 +235,7 @@ h2 { margin: 0 0 12px; }
   margin-bottom: 8px;
   background: var(--color-surface);
   color: var(--color-ink);
+  resize: none;
 }
 
 .item__fotos { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }

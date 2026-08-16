@@ -2,7 +2,7 @@ import { CHECKLISTS } from './checklists.js';
 
 const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
 
-const GROEN = rgb(0x0b / 255, 0x8a / 255, 0x5c / 255);
+const GROEN = rgb(0x00 / 255, 0x7a / 255, 0x55 / 255);
 const INKT = rgb(0x14 / 255, 0x18 / 255, 0x1a / 255);
 const GRIJS = rgb(0x5b / 255, 0x63 / 255, 0x60 / 255);
 const ROOD = rgb(0.7, 0.1, 0.1);

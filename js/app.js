@@ -5,6 +5,19 @@ import { deelPdf } from './share.js';
 
 const $app = document.getElementById('app');
 
+const ICONS = {
+  oplevering: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><path d="M9 12l2 2 4-4"/></svg>',
+  periodiek: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-4"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14.9 4"/><path d="M20 20v-5h-5"/></svg>',
+  lmra: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 3v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V5z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
+  terug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+};
+
+const NIEUW_KNOPPEN = [
+  { type: 'oplevering', titel: 'Oplevering', subtitel: 'Nieuwe installatie — NEN 1010' },
+  { type: 'periodiek', titel: 'Periodieke keuring', subtitel: 'Bestaande installatie — NEN 3140' },
+  { type: 'lmra', titel: 'LMRA', subtitel: 'Laatste Minuut Risico Analyse' },
+];
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -60,9 +73,15 @@ async function renderHome() {
     <section class="nieuw">
       <h2>Nieuwe keuring</h2>
       <div class="nieuw__knoppen">
-        <button class="btn btn--primary" data-type="oplevering">Oplevering (NEN 1010)</button>
-        <button class="btn btn--primary" data-type="periodiek">Periodieke keuring (NEN 3140)</button>
-        <button class="btn btn--primary" data-type="lmra">LMRA</button>
+        ${NIEUW_KNOPPEN.map((k) => `
+          <button class="keuze-kaart" data-type="${k.type}">
+            <span class="keuze-kaart__icoon">${ICONS[k.type]}</span>
+            <span class="keuze-kaart__tekst">
+              <span class="keuze-kaart__titel">${escapeHtml(k.titel)}</span>
+              <span class="keuze-kaart__subtitel">${escapeHtml(k.subtitel)}</span>
+            </span>
+          </button>
+        `).join('')}
       </div>
     </section>
     <section class="geschiedenis">
@@ -124,7 +143,7 @@ async function renderForm(id) {
   const fotoUrlMap = new Map(fotos.map((foto) => [foto.id, URL.createObjectURL(foto.blob)]));
   $app.innerHTML = `
     <section class="formulier">
-      <a href="#/" class="terug">&larr; Terug</a>
+      <a href="#/" class="terug">${ICONS.terug}<span>Terug</span></a>
       <h2>${escapeHtml(checklist.label)} <span class="subtitel">${escapeHtml(checklist.subtitel)}</span></h2>
       ${renderKopVelden(keuring)}
       ${keuring.type !== 'lmra' ? renderGroepenSectie(keuring) : ''}
