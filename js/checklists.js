@@ -18,7 +18,7 @@ export const CHECKLISTS = {
         naam: 'Aarding',
         items: [
           'Hoofdaarde aanwezig en goed aangesloten',
-          'Aardweerstand gemeten en binnen norm',
+          { omschrijving: 'Aardweerstand gemeten en binnen norm', meeteenheid: 'Ohm' },
           'Potentiaalvereffening aangebracht (bv. leidingwerk, badkamer)',
         ],
       },
@@ -65,8 +65,8 @@ export const CHECKLISTS = {
       {
         naam: 'Meetresultaten',
         items: [
-          'Isolatieweerstand gemeten en binnen norm',
-          'Aardverbinding/aardlusimpedantie gemeten en binnen norm',
+          { omschrijving: 'Isolatieweerstand gemeten en binnen norm', meeteenheid: 'MOhm' },
+          { omschrijving: 'Aardverbinding/aardlusimpedantie gemeten en binnen norm', meeteenheid: 'Ohm' },
         ],
       },
       {
@@ -119,8 +119,18 @@ export const CHECKLISTS = {
 export function buildInitialItems(type) {
   const items = [];
   CHECKLISTS[type].categorieen.forEach((categorie) => {
-    categorie.items.forEach((omschrijving) => {
-      items.push({ categorie: categorie.naam, omschrijving, resultaat: null, opmerking: '', fotoIds: [] });
+    categorie.items.forEach((entry) => {
+      const omschrijving = typeof entry === 'string' ? entry : entry.omschrijving;
+      const meeteenheid = typeof entry === 'string' ? null : entry.meeteenheid;
+      items.push({
+        categorie: categorie.naam,
+        omschrijving,
+        meeteenheid,
+        meetwaarde: '',
+        resultaat: null,
+        opmerking: '',
+        fotoIds: [],
+      });
     });
   });
   return items;

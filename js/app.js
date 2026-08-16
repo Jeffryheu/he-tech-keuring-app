@@ -201,6 +201,12 @@ function renderItem(keuring, item, fotoUrlMap) {
           </label>
         `).join('')}
       </div>
+      ${item.meeteenheid ? `
+        <label class="veld veld--meting">
+          <span>Meetwaarde (${escapeHtml(item.meeteenheid)})</span>
+          <input type="text" inputmode="decimal" placeholder="bv. 1.2" value="${escapeHtml(item.meetwaarde)}" data-veld="items.${itemIndex}.meetwaarde">
+        </label>
+      ` : ''}
       <textarea class="item__opmerking" placeholder="Opmerking" data-veld="items.${itemIndex}.opmerking">${escapeHtml(item.opmerking)}</textarea>
       <div class="item__fotos">${fotos}</div>
       <label class="btn btn--klein">

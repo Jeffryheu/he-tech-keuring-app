@@ -93,7 +93,10 @@ export async function genereerRapport(keuring, fotos) {
 
     for (const item of items) {
       const resultaatLabel = item.resultaat || 'niet beoordeeld';
-      const omschrijvingRegels = wrapText(`[${resultaatLabel}] ${item.omschrijving}`, font, 10, breedte);
+      const meetwaardeTekst = item.meeteenheid && item.meetwaarde
+        ? ` — ${saniteerVoorPdf(item.meetwaarde, font)} ${item.meeteenheid}`
+        : '';
+      const omschrijvingRegels = wrapText(`[${resultaatLabel}] ${item.omschrijving}${meetwaardeTekst}`, font, 10, breedte);
       zorgVoorRuimte(omschrijvingRegels.length * 13 + 10);
       const kleur = item.resultaat === 'afgekeurd' ? ROOD : INKT;
       omschrijvingRegels.forEach((regel, i) => page.drawText(regel, { x: MARGE, y: y - i * 13, size: 10, font, color: kleur }));
@@ -130,6 +133,17 @@ export async function genereerRapport(keuring, fotos) {
     y -= 16;
     regels.forEach((regel, i) => page.drawText(regel, { x: MARGE, y: y - i * 13, size: 10, font, color: INKT }));
     y -= regels.length * 13;
+  }
+
+  if (keuring.type !== 'lmra') {
+    const conclusieTekst = aantalAfgekeurd === 0
+      ? `Conclusie: de installatie voldoet aan de eisen van ${checklist.subtitel}.`
+      : `Conclusie: de installatie voldoet niet volledig aan de eisen van ${checklist.subtitel} — zie geconstateerde gebreken hierboven. Herstel wordt geadviseerd.`;
+    const conclusieRegels = wrapText(conclusieTekst, fontBold, 12, breedte);
+    zorgVoorRuimte(conclusieRegels.length * 15 + 10);
+    const conclusieKleur = aantalAfgekeurd > 0 ? ROOD : GROEN;
+    conclusieRegels.forEach((regel, i) => page.drawText(regel, { x: MARGE, y: y - i * 15, size: 12, font: fontBold, color: conclusieKleur }));
+    y -= conclusieRegels.length * 15 + 10;
   }
 
   if (keuring.type === 'lmra') {
