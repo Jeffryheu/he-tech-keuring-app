@@ -139,6 +139,12 @@ h2 { margin: 0 0 12px; }
 .keuze-kaart__titel { font-weight: 700; font-size: 1.05rem; color: var(--color-ink); }
 .keuze-kaart__subtitel { font-size: 0.85rem; color: var(--color-muted); }
 
+.klanten-import { margin-bottom: 30px; }
+.keuze-kaart--klein { padding: 10px 14px; }
+.keuze-kaart--klein .keuze-kaart__icoon { width: 36px; height: 36px; }
+.keuze-kaart--klein .keuze-kaart__icoon svg { width: 18px; height: 18px; }
+.keuze-kaart--klein .keuze-kaart__titel { font-size: 0.95rem; }
+
 .geschiedenis__lijst {
   list-style: none;
   margin: 0;

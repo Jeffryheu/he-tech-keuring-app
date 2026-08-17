@@ -10,6 +10,7 @@ const ICONS = {
   periodiek: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-4"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14.9 4"/><path d="M20 20v-5h-5"/></svg>',
   lmra: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 3v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V5z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
   terug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+  klanten: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
 };
 
 const NIEUW_KNOPPEN = [
@@ -69,6 +70,7 @@ async function route() {
 
 async function renderHome() {
   const keuringen = await DB.listKeuringen();
+  const klanten = await DB.listKlanten();
   $app.innerHTML = `
     <section class="nieuw">
       <h2>Nieuwe keuring</h2>
@@ -84,6 +86,16 @@ async function renderHome() {
         `).join('')}
       </div>
     </section>
+    <section class="klanten-import">
+      <label class="keuze-kaart keuze-kaart--klein">
+        <span class="keuze-kaart__icoon">${ICONS.klanten}</span>
+        <span class="keuze-kaart__tekst">
+          <span class="keuze-kaart__titel">Klanten importeren</span>
+          <span class="keuze-kaart__subtitel">${klanten.length === 0 ? 'Nog geen klanten geïmporteerd' : `${klanten.length} klant${klanten.length === 1 ? '' : 'en'} beschikbaar`}</span>
+        </span>
+        <input type="file" accept="application/json,.json" data-actie="klanten-import" hidden>
+      </label>
+    </section>
     <section class="geschiedenis">
       <h2>Geschiedenis</h2>
       ${keuringen.length === 0
@@ -96,6 +108,24 @@ async function renderHome() {
   });
   $app.querySelectorAll('.geschiedenis__lijst li').forEach((li) => {
     li.addEventListener('click', () => { location.hash = `#/keuring/${li.dataset.id}`; });
+  });
+  $app.querySelector('[data-actie="klanten-import"]')?.addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+      const tekst = await file.text();
+      const data = JSON.parse(tekst);
+      if (!Array.isArray(data)) throw new Error('Bestand bevat geen lijst');
+      const klantenLijst = data
+        .filter((k) => k && typeof k.naam === 'string' && k.naam.trim())
+        .map((k) => ({ naam: k.naam.trim(), adres: typeof k.adres === 'string' ? k.adres.trim() : '' }));
+      if (klantenLijst.length === 0) throw new Error('Geen geldige klanten gevonden in bestand');
+      await DB.importeerKlanten(klantenLijst);
+      renderHome();
+    } catch (err) {
+      alert('Klanten importeren is mislukt. Controleer of dit het juiste klanten-export.json-bestand is.');
+      console.error(err);
+    }
   });
 }
 
@@ -141,11 +171,12 @@ async function renderForm(id) {
   const checklist = CHECKLISTS[keuring.type];
   const fotos = await DB.getFotosByKeuring(keuring.id);
   const fotoUrlMap = new Map(fotos.map((foto) => [foto.id, URL.createObjectURL(foto.blob)]));
+  const klanten = keuring.type !== 'lmra' ? await DB.listKlanten() : [];
   $app.innerHTML = `
     <section class="formulier">
       <a href="#/" class="terug">${ICONS.terug}<span>Terug</span></a>
       <h2>${escapeHtml(checklist.label)} <span class="subtitel">${escapeHtml(checklist.subtitel)}</span></h2>
-      ${renderKopVelden(keuring)}
+      ${renderKopVelden(keuring, klanten)}
       ${keuring.type !== 'lmra' ? renderGroepenSectie(keuring) : ''}
       ${checklist.categorieen.map((cat) => renderCategorie(keuring, cat, fotoUrlMap)).join('')}
       <label class="veld">
@@ -160,10 +191,10 @@ async function renderForm(id) {
       </div>
     </section>
   `;
-  bindFormEvents(keuring);
+  bindFormEvents(keuring, klanten);
 }
 
-function renderKopVelden(keuring) {
+function renderKopVelden(keuring, klanten) {
   if (keuring.type === 'lmra') {
     return `
       <label class="veld"><span>Werkzaamheden</span><input type="text" data-veld="werkzaamheden" value="${escapeHtml(keuring.werkzaamheden)}"></label>
@@ -185,7 +216,13 @@ function renderKopVelden(keuring) {
     `;
   }
   return `
-    <label class="veld"><span>Klantnaam</span><input type="text" data-veld="klant.naam" value="${escapeHtml(keuring.klant.naam)}"></label>
+    <label class="veld">
+      <span>Klantnaam</span>
+      <input type="text" data-veld="klant.naam" list="klanten-lijst" value="${escapeHtml(keuring.klant.naam)}">
+    </label>
+    <datalist id="klanten-lijst">
+      ${klanten.map((k) => `<option value="${escapeHtml(k.naam)}"></option>`).join('')}
+    </datalist>
     <label class="veld"><span>Adres</span><input type="text" data-veld="klant.adres" value="${escapeHtml(keuring.klant.adres)}"></label>
     <label class="veld"><span>Datum</span><input type="date" data-veld="datum" value="${escapeHtml(keuring.datum)}"></label>
     <label class="veld"><span>Monteur</span><input type="text" data-veld="monteur" value="${escapeHtml(keuring.monteur)}"></label>
@@ -298,7 +335,7 @@ function renderItem(keuring, item, fotoUrlMap) {
   `;
 }
 
-function bindFormEvents(keuring) {
+function bindFormEvents(keuring, klanten = []) {
   const $form = $app.querySelector('.formulier');
 
   $form.addEventListener('input', async (event) => {
@@ -307,6 +344,14 @@ function bindFormEvents(keuring) {
     if (event.target.type === 'radio' && !event.target.checked) return;
     setPath(keuring, veld, event.target.value);
     keuring.bijgewerkt = new Date().toISOString();
+    if (veld === 'klant.naam') {
+      const klant = klanten.find((k) => k.naam === event.target.value);
+      if (klant) {
+        keuring.klant.adres = klant.adres;
+        const $adres = $form.querySelector('[data-veld="klant.adres"]');
+        if ($adres) $adres.value = klant.adres;
+      }
+    }
     await DB.saveKeuring(keuring);
   });
 

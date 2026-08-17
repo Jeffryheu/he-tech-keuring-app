@@ -1,7 +1,8 @@
 const DB_NAME = 'keuring-app';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_KEURINGEN = 'keuringen';
 const STORE_FOTOS = 'fotos';
+const STORE_KLANTEN = 'klanten';
 
 let dbPromise = null;
 
@@ -17,6 +18,9 @@ function openDb() {
       if (!db.objectStoreNames.contains(STORE_FOTOS)) {
         const fotoStore = db.createObjectStore(STORE_FOTOS, { keyPath: 'id' });
         fotoStore.createIndex('keuringId', 'keuringId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_KLANTEN)) {
+        db.createObjectStore(STORE_KLANTEN, { keyPath: 'naam' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -93,4 +97,23 @@ export async function deleteFoto(id) {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+}
+
+export async function importeerKlanten(klanten) {
+  const db = await openDb();
+  const tx = db.transaction(STORE_KLANTEN, 'readwrite');
+  const store = tx.objectStore(STORE_KLANTEN);
+  store.clear();
+  klanten.forEach((klant) => store.put(klant));
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function listKlanten() {
+  const db = await openDb();
+  const tx = db.transaction(STORE_KLANTEN, 'readonly');
+  const all = await promisifyRequest(tx.objectStore(STORE_KLANTEN).getAll());
+  return all.sort((a, b) => a.naam.localeCompare(b.naam));
 }
