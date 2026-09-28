@@ -1,5 +1,9 @@
 import * as DB from './db.js';
-import { CHECKLISTS, buildInitialItems, buildGroep } from './checklists.js';
+import {
+  CHECKLISTS, CONCLUSIES, DOCUMENTATIE, MEETSPANNINGEN, GROEP_SOORTEN, uitschakeltijdTekst,
+  buildInitialItems, buildGroep, buildRapport, normaliseerRapport, stelConclusieVoor,
+  minimumIsolatie, isolatieTeLaag, isolatieOpvallendLaag,
+} from './checklists.js';
 import { genereerRapport } from './pdf.js';
 import { deelPdf } from './share.js';
 
@@ -154,6 +158,7 @@ async function startNieuweKeuring(type) {
     monteur: '',
     items: buildInitialItems(type),
     groepen: [],
+    rapport: buildRapport(),
     algemeneOpmerkingen: '',
     aangemaakt: nu,
     bijgewerkt: nu,
@@ -169,6 +174,8 @@ async function renderForm(id) {
   const keuring = await DB.getKeuring(id);
   if (!keuring) { location.hash = '#/'; return; }
   const checklist = CHECKLISTS[keuring.type];
+  const uitgebreid = Boolean(checklist.uitgebreidRapport);
+  if (keuring.type !== 'lmra') normaliseerRapport(keuring);
   const fotos = await DB.getFotosByKeuring(keuring.id);
   const fotoUrlMap = new Map(fotos.map((foto) => [foto.id, URL.createObjectURL(foto.blob)]));
   const klanten = keuring.type !== 'lmra' ? await DB.listKlanten() : [];
@@ -176,13 +183,15 @@ async function renderForm(id) {
     <section class="formulier">
       <a href="#/" class="terug">${ICONS.terug}<span>Terug</span></a>
       <h2>${escapeHtml(checklist.label)} <span class="subtitel">${escapeHtml(checklist.subtitel)}</span></h2>
-      ${renderKopVelden(keuring, klanten)}
+      ${uitgebreid ? renderRapportKop(keuring, klanten) : renderKopVelden(keuring, klanten)}
       ${keuring.type !== 'lmra' ? renderGroepenSectie(keuring) : ''}
-      ${checklist.categorieen.map((cat) => renderCategorie(keuring, cat, fotoUrlMap)).join('')}
+      ${categorieenVan(keuring).map((naam) => renderCategorie(keuring, { naam }, fotoUrlMap)).join('')}
+      ${uitgebreid ? renderRapportSlot(keuring) : ''}
       <label class="veld">
         <span>Algemene opmerkingen</span>
         <textarea data-veld="algemeneOpmerkingen">${escapeHtml(keuring.algemeneOpmerkingen)}</textarea>
       </label>
+      ${uitgebreid ? renderOndertekening(keuring) : ''}
       <div class="formulier__acties">
         ${keuring.status === 'concept'
           ? '<button class="btn btn--primary" data-actie="afronden">Afronden</button>'
@@ -229,8 +238,175 @@ function renderKopVelden(keuring, klanten) {
   `;
 }
 
+// Categorieën in de volgorde waarin de items in de keuring staan. Zo blijven keuringen die
+// met een oudere checklist zijn aangemaakt volledig zichtbaar.
+function categorieenVan(keuring) {
+  return [...new Set(keuring.items.map((item) => item.categorie))];
+}
+
+function tekstVeld(label, veld, waarde, attrs = '') {
+  return `<label class="veld"><span>${label}</span><input type="text" data-veld="${veld}" value="${escapeHtml(waarde)}" ${attrs}></label>`;
+}
+
+function tekstVak(label, veld, waarde, placeholder = '') {
+  return `<label class="veld"><span>${label}</span><textarea data-veld="${veld}" placeholder="${escapeHtml(placeholder)}">${escapeHtml(waarde)}</textarea></label>`;
+}
+
+function keuzeVeld(label, veld, waarde, opties, attrs = '') {
+  return `
+    <label class="veld"><span>${label}</span>
+      <select data-veld="${veld}" ${attrs}>
+        <option value="" ${!waarde ? 'selected' : ''}>— kies —</option>
+        ${opties.map((o) => `<option value="${escapeHtml(o.waarde)}" ${o.waarde === waarde ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+      </select>
+    </label>
+  `;
+}
+
+function renderRapportKop(keuring, klanten) {
+  const r = keuring.rapport;
+  const og = r.opdrachtgever;
+  return `
+    <fieldset class="categorie">
+      <legend>1. Object</legend>
+      <label class="veld">
+        <span>Naam object / klant</span>
+        <input type="text" data-veld="klant.naam" list="klanten-lijst" value="${escapeHtml(keuring.klant.naam)}">
+      </label>
+      <datalist id="klanten-lijst">
+        ${klanten.map((k) => `<option value="${escapeHtml(k.naam)}"></option>`).join('')}
+      </datalist>
+      ${tekstVeld('Adres', 'klant.adres', keuring.klant.adres)}
+      ${tekstVeld('Contactpersoon', 'rapport.object.contactpersoon', r.object.contactpersoon)}
+      <div class="groep__rij">
+        ${tekstVeld('Telefoon', 'rapport.object.telefoon', r.object.telefoon, 'inputmode="tel"')}
+        ${tekstVeld('E-mail', 'rapport.object.email', r.object.email, 'inputmode="email"')}
+      </div>
+    </fieldset>
+
+    <fieldset class="categorie">
+      <legend>2. Opdrachtgever</legend>
+      <label class="vinkje">
+        <input type="checkbox" data-veld="rapport.opdrachtgever.zelfdeAlsObject" data-rerender ${og.zelfdeAlsObject ? 'checked' : ''}>
+        <span>Zelfde als object</span>
+      </label>
+      ${og.zelfdeAlsObject ? '' : `
+        ${tekstVeld('Naam opdrachtgever', 'rapport.opdrachtgever.naam', og.naam)}
+        ${tekstVeld('Adres', 'rapport.opdrachtgever.adres', og.adres)}
+        ${tekstVeld('Contactpersoon', 'rapport.opdrachtgever.contactpersoon', og.contactpersoon)}
+        <div class="groep__rij">
+          ${tekstVeld('Telefoon', 'rapport.opdrachtgever.telefoon', og.telefoon, 'inputmode="tel"')}
+          ${tekstVeld('E-mail', 'rapport.opdrachtgever.email', og.email, 'inputmode="email"')}
+        </div>
+      `}
+    </fieldset>
+
+    <fieldset class="categorie">
+      <legend>3. Inspectie-instelling</legend>
+      ${tekstVeld('Naam', 'rapport.instelling.naam', r.instelling.naam)}
+      ${tekstVeld('Adres', 'rapport.instelling.adres', r.instelling.adres)}
+      ${tekstVeld('Inspecteur', 'monteur', keuring.monteur)}
+      <label class="veld"><span>Datum inspectie</span><input type="date" data-veld="datum" value="${escapeHtml(keuring.datum)}"></label>
+    </fieldset>
+
+    <fieldset class="categorie">
+      <legend>4. Soort inspectie</legend>
+      <div class="item__resultaten">
+        <label class="resultaat"><input type="radio" name="soortInstallatie" value="nieuw" data-veld="rapport.soortInstallatie" ${r.soortInstallatie === 'nieuw' ? 'checked' : ''}><span>Nieuwe installatie</span></label>
+        <label class="resultaat"><input type="radio" name="soortInstallatie" value="uitbreiding" data-veld="rapport.soortInstallatie" ${r.soortInstallatie === 'uitbreiding' ? 'checked' : ''}><span>Uitbreiding</span></label>
+      </div>
+      ${tekstVeld('Jaar van aanleg', 'rapport.jaarAanleg', r.jaarAanleg, 'inputmode="numeric"')}
+    </fieldset>
+
+    <fieldset class="categorie">
+      <legend>5. Uitvoering en omvang</legend>
+      ${tekstVak('Uitvoering van de inspectie', 'rapport.uitvoering', r.uitvoering, 'Bv. visuele inspectie, metingen en beproevingen per groep')}
+      ${tekstVak('Niet geïnspecteerde delen', 'rapport.nietGeinspecteerd', r.nietGeinspecteerd, 'Welk deel en waarom? Leeg = volledig geïnspecteerd')}
+    </fieldset>
+
+    <fieldset class="categorie">
+      <legend>6. Kenmerken installatie</legend>
+      ${keuzeVeld('Doel van de installatie', 'rapport.doel', r.doel, ['Woning', 'Kantoor', 'Bedrijfshal / werkplaats', 'Winkel', 'Overig'].map((d) => ({ waarde: d, label: d })))}
+      ${keuzeVeld('Stroomstelsel', 'rapport.stroomstelsel', r.stroomstelsel, ['TN-S', 'TN-C-S', 'TT', 'IT'].map((s) => ({ waarde: s, label: s })), 'data-rerender')}
+      ${tekstVak('Wederzijdse beïnvloeding', 'rapport.wederzijdseBeinvloeding', r.wederzijdseBeinvloeding, 'Bv. geen bijzonderheden')}
+      ${tekstVak('Uitwendige invloeden', 'rapport.uitwendigeInvloeden', r.uitwendigeInvloeden, 'Bv. vocht, stof, buitenopstelling — of geen bijzonderheden')}
+    </fieldset>
+
+    <fieldset class="categorie">
+      <legend>7. Gebruikte documentatie</legend>
+      ${DOCUMENTATIE.map((d) => `
+        <label class="vinkje">
+          <input type="checkbox" data-veld="rapport.documentatie.${d.sleutel}" ${r.documentatie[d.sleutel] ? 'checked' : ''}>
+          <span>${escapeHtml(d.label)}</span>
+        </label>
+      `).join('')}
+      ${tekstVeld('Overige documentatie', 'rapport.documentatie.overig', r.documentatie.overig)}
+    </fieldset>
+
+    <fieldset class="categorie">
+      <legend>8. Inspectiefrequentie</legend>
+      <div class="groep__rij">
+        ${keuzeVeld('Frequentie', 'rapport.frequentie', r.frequentie, [
+          { waarde: '1', label: 'Elk jaar' },
+          { waarde: '3', label: 'Elke 3 jaar' },
+          { waarde: '5', label: 'Elke 5 jaar' },
+          { waarde: 'anders', label: 'Anders (zie datum)' },
+        ], 'data-actie="frequentie"')}
+        <label class="veld"><span>Volgende inspectie</span><input type="date" data-veld="rapport.volgendeInspectie" value="${escapeHtml(r.volgendeInspectie)}"></label>
+      </div>
+    </fieldset>
+  `;
+}
+
+function renderRapportSlot(keuring) {
+  const r = keuring.rapport;
+  const voorstel = stelConclusieVoor(keuring);
+  const voorstelLabel = CONCLUSIES.find((c) => c.waarde === voorstel)?.label;
+  return `
+    <fieldset class="categorie">
+      <legend>Afwijkingen en aanbevelingen</legend>
+      ${tekstVak('Geconstateerde afwijkingen', 'rapport.afwijkingen', r.afwijkingen)}
+      <button type="button" class="btn btn--klein" data-actie="vul-afwijkingen">Vul met afgekeurde punten</button>
+      <div class="ruimte"></div>
+      ${tekstVak('Aanbevelingen', 'rapport.aanbevelingen', r.aanbevelingen)}
+    </fieldset>
+
+    <fieldset class="categorie">
+      <legend>Conclusie</legend>
+      <div class="item__resultaten">
+        ${CONCLUSIES.map((c) => `
+          <label class="resultaat ${c.waarde === 'geheel' ? 'resultaat--ok' : c.waarde === 'niet' ? 'resultaat--afgekeurd' : ''}">
+            <input type="radio" name="conclusie" value="${c.waarde}" data-veld="rapport.conclusie" ${r.conclusie === c.waarde ? 'checked' : ''}>
+            <span>${escapeHtml(c.label)}</span>
+          </label>
+        `).join('')}
+      </div>
+      ${voorstelLabel ? `<p class="hint">Voorstel op basis van de afgekeurde punten: <strong>${escapeHtml(voorstelLabel)}</strong>. U kiest zelf.</p>` : ''}
+      ${tekstVak('Toelichting, aanbevelingen en consequenties', 'rapport.conclusieToelichting', r.conclusieToelichting)}
+    </fieldset>
+  `;
+}
+
+function renderOndertekening(keuring) {
+  const r = keuring.rapport;
+  return `
+    <fieldset class="categorie">
+      <legend>Ondertekening inspecteur</legend>
+      <div class="handtekening">
+        <canvas class="handtekening__vlak" width="600" height="200"></canvas>
+        ${r.handtekening ? '' : '<span class="handtekening__hint">Teken hier met uw vinger of pen</span>'}
+      </div>
+      <button type="button" class="btn btn--klein" data-actie="wis-handtekening">Wissen</button>
+      <div class="ruimte"></div>
+      <label class="veld"><span>Datum ondertekening</span><input type="date" data-veld="rapport.datumOndertekening" value="${escapeHtml(r.datumOndertekening)}"></label>
+    </fieldset>
+  `;
+}
+
 function renderGroepenSectie(keuring) {
   const groepen = keuring.groepen || [];
+  const meetspanning = keuring.rapport.meetspanning;
+  const opvallend = isolatieOpvallendLaag(keuring);
   return `
     <fieldset class="categorie groepen">
       <legend>Groepen &amp; meetgegevens</legend>
@@ -238,17 +414,46 @@ function renderGroepenSectie(keuring) {
         <span>Aantal groepen</span>
         <input type="number" min="0" inputmode="numeric" data-actie="aantal-groepen" value="${groepen.length || ''}">
       </label>
-      ${groepen.map((groep, i) => renderGroep(groep, i)).join('')}
+      <label class="veld">
+        <span>Beproevingsspanning isolatiemeting</span>
+        <select data-veld="rapport.meetspanning" data-rerender>
+          ${MEETSPANNINGEN.map((m) => `<option value="${m.waarde}" ${m.waarde === meetspanning ? 'selected' : ''}>${escapeHtml(m.label)}</option>`).join('')}
+        </select>
+      </label>
+      <p class="hint">Minimale isolatieweerstand: <strong>${minimumIsolatie(meetspanning).toFixed(1).replace('.', ',')} MΩ</strong>. Lagere waarden worden rood. Buiten meetbereik? Vul bv. &gt;999 in.</p>
+      <p class="hint hint--let-op" data-signaal="opvallend" ${opvallend.length ? '' : 'hidden'}>${opvallendTekst(opvallend)}</p>
+      ${CHECKLISTS[keuring.type].uitgebreidRapport ? '' : keuzeVeld('Stroomstelsel', 'rapport.stroomstelsel', keuring.rapport.stroomstelsel, ['TN-S', 'TN-C-S', 'TT', 'IT'].map((s) => ({ waarde: s, label: s })), 'data-rerender')}
+      <p class="hint">Maximale uitschakeltijd per groep volgt uit de soort groep en het stroomstelsel. Geldt voor uitschakeling door de overstroombeveiliging, niet voor de aanspreektijd van de aardlekschakelaar.</p>
+      ${groepen.map((groep, i) => renderGroep(groep, i, meetspanning, keuring.rapport.stroomstelsel)).join('')}
     </fieldset>
   `;
 }
 
-function renderGroep(groep, i) {
+function opvallendTekst(groepNummers) {
+  if (!groepNummers.length) return '';
+  const lijst = groepNummers.join(', ');
+  return `Let op: groep ${lijst} scoort opvallend lager dan de andere groepen. Nader onderzoek naar de oorzaak is aan te raden.`;
+}
+
+function isolatieInput(label, veld, waarde, meetspanning) {
+  const fout = isolatieTeLaag(waarde, meetspanning);
+  return `<label class="veld ${fout ? 'veld--fout' : ''}"><span>${label}</span><input type="text" inputmode="decimal" data-veld="${veld}" data-isolatie value="${escapeHtml(waarde)}"></label>`;
+}
+
+function renderGroep(groep, i, meetspanning, stroomstelsel) {
   const driefase = groep.fase === '3-fase';
+  const soort = groep.soort || 'eind-wcd';
   return `
     <div class="groep" data-groep-index="${i}">
       <p class="groep__titel">Groep ${groep.nummer}</p>
       <label class="veld"><span>Naam/omschrijving</span><input type="text" data-veld="groepen.${i}.naam" value="${escapeHtml(groep.naam)}"></label>
+      <label class="veld">
+        <span>Soort groep</span>
+        <select data-veld="groepen.${i}.soort" data-rerender>
+          ${GROEP_SOORTEN.map((g) => `<option value="${g.waarde}" ${g.waarde === soort ? 'selected' : ''}>${escapeHtml(g.label)}</option>`).join('')}
+        </select>
+      </label>
+      <p class="hint">Uitschakeltijd: <strong>${escapeHtml(uitschakeltijdTekst(soort, stroomstelsel))}</strong></p>
       <label class="veld">
         <span>Fase</span>
         <select class="groep__fase" data-groep-index="${i}">
@@ -262,11 +467,11 @@ function renderGroep(groep, i) {
       </div>
       <p class="groep__subkop">Isolatieweerstand (MΩ)</p>
       <div class="groep__rij">
-        <label class="veld"><span>L1-PE</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.isolatie.l1pe" value="${escapeHtml(groep.isolatie.l1pe)}"></label>
-        <label class="veld"><span>N-PE</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.isolatie.npe" value="${escapeHtml(groep.isolatie.npe)}"></label>
+        ${isolatieInput('L1-PE', `groepen.${i}.isolatie.l1pe`, groep.isolatie.l1pe, meetspanning)}
+        ${isolatieInput('N-PE', `groepen.${i}.isolatie.npe`, groep.isolatie.npe, meetspanning)}
         ${driefase ? `
-          <label class="veld"><span>L2-PE</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.isolatie.l2pe" value="${escapeHtml(groep.isolatie.l2pe)}"></label>
-          <label class="veld"><span>L3-PE</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.isolatie.l3pe" value="${escapeHtml(groep.isolatie.l3pe)}"></label>
+          ${isolatieInput('L2-PE', `groepen.${i}.isolatie.l2pe`, groep.isolatie.l2pe, meetspanning)}
+          ${isolatieInput('L3-PE', `groepen.${i}.isolatie.l3pe`, groep.isolatie.l3pe, meetspanning)}
         ` : ''}
       </div>
       <label class="veld"><span>Lusimpedantie Zs (Ω)</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.zs" value="${escapeHtml(groep.zs)}"></label>
@@ -342,8 +547,23 @@ function bindFormEvents(keuring, klanten = []) {
     const veld = event.target.dataset.veld;
     if (!veld) return;
     if (event.target.type === 'radio' && !event.target.checked) return;
-    setPath(keuring, veld, event.target.value);
+    const waarde = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+    setPath(keuring, veld, waarde);
     keuring.bijgewerkt = new Date().toISOString();
+    if ('isolatie' in event.target.dataset) {
+      event.target.closest('.veld').classList.toggle('veld--fout', isolatieTeLaag(waarde, keuring.rapport.meetspanning));
+      const $signaal = $form.querySelector('[data-signaal="opvallend"]');
+      const opvallend = isolatieOpvallendLaag(keuring);
+      $signaal.textContent = opvallendTekst(opvallend);
+      $signaal.hidden = opvallend.length === 0;
+    }
+    if (event.target.dataset.actie === 'frequentie' && /^\d+$/.test(waarde)) {
+      const volgende = new Date(`${keuring.datum}T12:00:00`);
+      volgende.setFullYear(volgende.getFullYear() + Number(waarde));
+      keuring.rapport.volgendeInspectie = volgende.toISOString().slice(0, 10);
+      const $volgende = $form.querySelector('[data-veld="rapport.volgendeInspectie"]');
+      if ($volgende) $volgende.value = keuring.rapport.volgendeInspectie;
+    }
     if (veld === 'klant.naam') {
       const klant = klanten.find((k) => k.naam === event.target.value);
       if (klant) {
@@ -353,7 +573,22 @@ function bindFormEvents(keuring, klanten = []) {
       }
     }
     await DB.saveKeuring(keuring);
+    if ('rerender' in event.target.dataset) renderForm(keuring.id);
   });
+
+  $form.querySelector('[data-actie="vul-afwijkingen"]')?.addEventListener('click', async () => {
+    const afgekeurd = keuring.items.filter((item) => item.resultaat === 'afgekeurd');
+    if (afgekeurd.length === 0) { alert('Er zijn (nog) geen afgekeurde punten.'); return; }
+    const regels = afgekeurd.map((item) => `- ${item.omschrijving.split(' — ')[0]}${item.opmerking ? `: ${item.opmerking}` : ''}`);
+    const huidig = keuring.rapport.afwijkingen.trim();
+    if (huidig && !confirm('Het veld afwijkingen is al ingevuld. Afgekeurde punten eronder toevoegen?')) return;
+    keuring.rapport.afwijkingen = [huidig, ...regels].filter(Boolean).join('\n');
+    $form.querySelector('[data-veld="rapport.afwijkingen"]').value = keuring.rapport.afwijkingen;
+    keuring.bijgewerkt = new Date().toISOString();
+    await DB.saveKeuring(keuring);
+  });
+
+  bindHandtekening($form, keuring);
 
   $form.querySelector('[data-actie="afronden"]')?.addEventListener('click', async () => {
     keuring.status = 'afgerond';
@@ -433,6 +668,66 @@ function bindFormEvents(keuring, klanten = []) {
     keuring.bijgewerkt = new Date().toISOString();
     await DB.saveKeuring(keuring);
     renderForm(keuring.id);
+  });
+}
+
+function bindHandtekening($form, keuring) {
+  const canvas = $form.querySelector('.handtekening__vlak');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#14181a';
+
+  if (keuring.rapport.handtekening) {
+    const img = new Image();
+    img.onload = () => ctx.drawImage(img, 0, 0);
+    img.src = keuring.rapport.handtekening;
+  }
+
+  let tekent = false;
+  const punt = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) * (canvas.width / rect.width),
+      y: (event.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  };
+
+  canvas.addEventListener('pointerdown', (event) => {
+    tekent = true;
+    canvas.setPointerCapture(event.pointerId);
+    $form.querySelector('.handtekening__hint')?.remove();
+    const { x, y } = punt(event);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  });
+  canvas.addEventListener('pointermove', (event) => {
+    if (!tekent) return;
+    const { x, y } = punt(event);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  });
+  const stop = async () => {
+    if (!tekent) return;
+    tekent = false;
+    keuring.rapport.handtekening = canvas.toDataURL('image/png');
+    if (!keuring.rapport.datumOndertekening) {
+      keuring.rapport.datumOndertekening = new Date().toISOString().slice(0, 10);
+      $form.querySelector('[data-veld="rapport.datumOndertekening"]').value = keuring.rapport.datumOndertekening;
+    }
+    keuring.bijgewerkt = new Date().toISOString();
+    await DB.saveKeuring(keuring);
+  };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointercancel', stop);
+
+  $form.querySelector('[data-actie="wis-handtekening"]')?.addEventListener('click', async () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    keuring.rapport.handtekening = '';
+    keuring.bijgewerkt = new Date().toISOString();
+    await DB.saveKeuring(keuring);
   });
 }
 

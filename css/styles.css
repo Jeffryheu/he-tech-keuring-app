@@ -176,7 +176,7 @@ h2 { margin: 0 0 12px; }
 
 .veld { display: block; margin-bottom: 14px; }
 .veld span { display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.9rem; }
-.veld input, .veld textarea {
+.veld input, .veld textarea, .veld select {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--color-border);
@@ -270,3 +270,30 @@ h2 { margin: 0 0 12px; }
 .groep__rij .veld { flex: 1 1 100px; min-width: 100px; }
 .groep__aardlek-toggle { display: flex; align-items: center; gap: 8px; margin: 10px 0; cursor: pointer; }
 .groep__aardlek-toggle input { margin: 0; }
+
+.veld textarea { min-height: 70px; }
+.veld--fout span { color: var(--color-rood); }
+.veld--fout input { border-color: var(--color-rood); background: color-mix(in srgb, var(--color-rood) 10%, var(--color-surface)); color: var(--color-rood); font-weight: 700; }
+
+.hint { font-size: 0.85rem; color: var(--color-muted); margin: 0 0 12px; }
+.hint--let-op { color: var(--color-rood); font-weight: 600; }
+.hint[hidden] { display: none; }
+
+.vinkje { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: pointer; }
+.vinkje input { width: 20px; height: 20px; margin: 0; accent-color: var(--color-green); }
+
+.ruimte { height: 14px; }
+
+.handtekening {
+  position: relative;
+  border: 1px dashed var(--color-muted);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  margin-bottom: 8px;
+}
+.handtekening__vlak { display: block; width: 100%; height: auto; aspect-ratio: 3 / 1; touch-action: none; }
+.handtekening__hint {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #9aa39e; pointer-events: none; font-size: 0.9rem;
+}
