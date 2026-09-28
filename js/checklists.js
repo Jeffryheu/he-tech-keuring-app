@@ -126,6 +126,9 @@ export const CHECKLISTS = {
 export const INSPECTIE_INSTELLING = {
   naam: 'He-Tech Elektro',
   adres: 'Lage Gouwe 142, 2801 LL Gouda',
+  telefoon: '06 17 33 85 23',
+  email: 'info@he-techelektro.nl',
+  kvk: '92912826',
 };
 
 export const CONCLUSIES = [
@@ -142,9 +145,32 @@ export const DOCUMENTATIE = [
   { sleutel: 'fabrikant', label: 'Documentatie fabrikant' },
 ];
 
+// Eigen He-Tech-indeling voor de ernst van een gebrek.
+export const ERNST = [
+  { waarde: 'rood', label: 'Direct gevaarlijk', actie: 'Direct herstellen', kleur: '#c62828' },
+  { waarde: 'oranje', label: 'Gebrek', actie: 'Herstellen binnen 3 maanden', kleur: '#ef6c00' },
+  { waarde: 'geel', label: 'Aanbeveling', actie: 'Meenemen bij volgend onderhoud', kleur: '#f9c80e' },
+];
+
+export const STANDAARD_INSTRUMENTEN = [
+  { naam: 'Metrel MI 3102 BT', soort: 'Installatietester', serienummer: '', kalibratiedatum: '' },
+];
+
+// Korte titel van een checklistpunt: het deel vóór de toelichting.
+export function korteTitel(omschrijving) {
+  return String(omschrijving).split(' — ')[0];
+}
+
 export function buildRapport() {
   const contact = () => ({ contactpersoon: '', telefoon: '', email: '' });
   return {
+    rapportnummer: '',
+    zakelijk: false,
+    netspanning: '230/400 V',
+    aansluitwaarde: '',
+    aantalVerdeelinrichtingen: '1',
+    normen: 'NEN 1010 — Veiligheidsbepalingen voor laagspanningsinstallaties',
+    meetinstrumenten: [],
     object: contact(),
     opdrachtgever: { zelfdeAlsObject: true, naam: '', adres: '', ...contact() },
     instelling: { ...INSPECTIE_INSTELLING },
@@ -181,6 +207,11 @@ export function normaliseerRapport(keuring) {
     instelling: { ...basis.instelling, ...huidig.instelling },
     documentatie: { ...basis.documentatie, ...huidig.documentatie },
   };
+  keuring.items.forEach((item) => {
+    item.locatie ??= '';
+    item.ernst ??= null;
+    item.advies ??= '';
+  });
   return keuring;
 }
 
@@ -305,6 +336,9 @@ export function buildInitialItems(type) {
         meetwaarde: '',
         resultaat: null,
         opmerking: '',
+        locatie: '',
+        ernst: null,
+        advies: '',
         fotoIds: [],
       });
     });

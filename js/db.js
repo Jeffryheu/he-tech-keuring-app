@@ -1,8 +1,9 @@
 const DB_NAME = 'keuring-app';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_KEURINGEN = 'keuringen';
 const STORE_FOTOS = 'fotos';
 const STORE_KLANTEN = 'klanten';
+const STORE_INSTELLINGEN = 'instellingen';
 
 let dbPromise = null;
 
@@ -21,6 +22,9 @@ function openDb() {
       }
       if (!db.objectStoreNames.contains(STORE_KLANTEN)) {
         db.createObjectStore(STORE_KLANTEN, { keyPath: 'naam' });
+      }
+      if (!db.objectStoreNames.contains(STORE_INSTELLINGEN)) {
+        db.createObjectStore(STORE_INSTELLINGEN, { keyPath: 'sleutel' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -107,6 +111,23 @@ export async function importeerKlanten(klanten) {
   klanten.forEach((klant) => store.put(klant));
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function getInstelling(sleutel, standaard) {
+  const db = await openDb();
+  const tx = db.transaction(STORE_INSTELLINGEN, 'readonly');
+  const record = await promisifyRequest(tx.objectStore(STORE_INSTELLINGEN).get(sleutel));
+  return record ? record.waarde : standaard;
+}
+
+export async function saveInstelling(sleutel, waarde) {
+  const db = await openDb();
+  const tx = db.transaction(STORE_INSTELLINGEN, 'readwrite');
+  tx.objectStore(STORE_INSTELLINGEN).put({ sleutel, waarde });
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(waarde);
     tx.onerror = () => reject(tx.error);
   });
 }

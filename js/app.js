@@ -1,6 +1,6 @@
 import * as DB from './db.js';
 import {
-  CHECKLISTS, CONCLUSIES, DOCUMENTATIE, MEETSPANNINGEN, GROEP_SOORTEN, uitschakeltijdTekst,
+  CHECKLISTS, CONCLUSIES, DOCUMENTATIE, MEETSPANNINGEN, GROEP_SOORTEN, ERNST, STANDAARD_INSTRUMENTEN, uitschakeltijdTekst,
   buildInitialItems, buildGroep, buildRapport, normaliseerRapport, stelConclusieVoor,
   minimumIsolatie, isolatieTeLaag, isolatieOpvallendLaag,
 } from './checklists.js';
@@ -14,6 +14,7 @@ const ICONS = {
   periodiek: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-4"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14.9 4"/><path d="M20 20v-5h-5"/></svg>',
   lmra: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 3v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V5z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
   terug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+  instellingen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   klanten: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
 };
 
@@ -67,6 +68,8 @@ async function route() {
   const match = hash.match(/^#\/keuring\/(.+)$/);
   if (match) {
     await renderForm(match[1]);
+  } else if (hash === '#/instellingen') {
+    await renderInstellingen();
   } else {
     await renderHome();
   }
@@ -99,6 +102,13 @@ async function renderHome() {
         </span>
         <input type="file" accept="application/json,.json" data-actie="klanten-import" hidden>
       </label>
+      <a href="#/instellingen" class="keuze-kaart keuze-kaart--klein">
+        <span class="keuze-kaart__icoon">${ICONS.instellingen}</span>
+        <span class="keuze-kaart__tekst">
+          <span class="keuze-kaart__titel">Instellingen</span>
+          <span class="keuze-kaart__subtitel">Inspecteur, meetinstrumenten en rapportnummers</span>
+        </span>
+      </a>
     </section>
     <section class="geschiedenis">
       <h2>Geschiedenis</h2>
@@ -147,18 +157,102 @@ function renderGeschiedenisItem(keuring) {
   `;
 }
 
+async function laadInstellingen() {
+  return {
+    inspecteur: await DB.getInstelling('inspecteur', 'Jeffry Heuveling'),
+    instrumenten: await DB.getInstelling('instrumenten', STANDAARD_INSTRUMENTEN),
+    rapportTeller: await DB.getInstelling('rapportTeller', { jaar: new Date().getFullYear(), volgnummer: 0 }),
+  };
+}
+
+// Rapportnummer HTE-<jaar>-<volgnummer>, het volgnummer begint elk jaar opnieuw bij 1.
+async function volgendRapportnummer() {
+  const jaar = new Date().getFullYear();
+  const teller = await DB.getInstelling('rapportTeller', { jaar, volgnummer: 0 });
+  const volgnummer = teller.jaar === jaar ? teller.volgnummer + 1 : 1;
+  await DB.saveInstelling('rapportTeller', { jaar, volgnummer });
+  return `HTE-${jaar}-${String(volgnummer).padStart(3, '0')}`;
+}
+
+async function renderInstellingen() {
+  const instellingen = await laadInstellingen();
+  const instrumenten = instellingen.instrumenten;
+  const teller = instellingen.rapportTeller;
+  $app.innerHTML = `
+    <section class="formulier instellingen">
+      <a href="#/" class="terug">${ICONS.terug}<span>Terug</span></a>
+      <h2>Instellingen</h2>
+      <fieldset class="categorie">
+        <legend>Inspecteur</legend>
+        <label class="veld"><span>Naam (standaard bij nieuwe keuringen)</span><input type="text" data-instelling="inspecteur" value="${escapeHtml(instellingen.inspecteur)}"></label>
+      </fieldset>
+      <fieldset class="categorie">
+        <legend>Meetinstrumenten</legend>
+        <p class="hint">Deze instrumenten komen met serienummer en kalibratiedatum in elk nieuw rapport.</p>
+        ${instrumenten.map((inst, i) => `
+          <div class="groep" data-instrument="${i}">
+            <div class="groep__rij">
+              <label class="veld"><span>Merk en type</span><input type="text" data-inst-veld="naam" value="${escapeHtml(inst.naam)}"></label>
+              <label class="veld"><span>Soort</span><input type="text" data-inst-veld="soort" value="${escapeHtml(inst.soort)}"></label>
+            </div>
+            <div class="groep__rij">
+              <label class="veld"><span>Serienummer</span><input type="text" data-inst-veld="serienummer" value="${escapeHtml(inst.serienummer)}"></label>
+              <label class="veld"><span>Kalibratiedatum</span><input type="date" data-inst-veld="kalibratiedatum" value="${escapeHtml(inst.kalibratiedatum)}"></label>
+            </div>
+            <button type="button" class="btn btn--klein" data-actie="verwijder-instrument">Verwijderen</button>
+          </div>
+        `).join('')}
+        <button type="button" class="btn btn--klein" data-actie="instrument-toevoegen">Instrument toevoegen</button>
+      </fieldset>
+      <fieldset class="categorie">
+        <legend>Rapportnummers</legend>
+        <p class="hint">Laatst uitgegeven nummer: <strong>${teller.volgnummer ? `HTE-${teller.jaar}-${String(teller.volgnummer).padStart(3, '0')}` : 'nog geen'}</strong>. Het volgende rapport krijgt automatisch het nummer daarna.</p>
+      </fieldset>
+    </section>
+  `;
+  const $sectie = $app.querySelector('.instellingen');
+  $sectie.addEventListener('input', async (event) => {
+    if (event.target.dataset.instelling) {
+      await DB.saveInstelling(event.target.dataset.instelling, event.target.value);
+      return;
+    }
+    const $inst = event.target.closest('[data-instrument]');
+    if ($inst && event.target.dataset.instVeld) {
+      instrumenten[Number($inst.dataset.instrument)][event.target.dataset.instVeld] = event.target.value;
+      await DB.saveInstelling('instrumenten', instrumenten);
+    }
+  });
+  $sectie.addEventListener('click', async (event) => {
+    if (event.target.dataset.actie === 'instrument-toevoegen') {
+      instrumenten.push({ naam: '', soort: '', serienummer: '', kalibratiedatum: '' });
+    } else if (event.target.dataset.actie === 'verwijder-instrument') {
+      instrumenten.splice(Number(event.target.closest('[data-instrument]').dataset.instrument), 1);
+    } else {
+      return;
+    }
+    await DB.saveInstelling('instrumenten', instrumenten);
+    renderInstellingen();
+  });
+}
+
 async function startNieuweKeuring(type) {
   const nu = new Date().toISOString();
+  const instellingen = await laadInstellingen();
+  const rapport = buildRapport();
+  if (CHECKLISTS[type].uitgebreidRapport) {
+    rapport.rapportnummer = await volgendRapportnummer();
+    rapport.meetinstrumenten = instellingen.instrumenten.map((inst) => ({ ...inst }));
+  }
   const keuring = {
     id: crypto.randomUUID(),
     type,
     status: 'concept',
     klant: { naam: '', adres: '' },
     datum: nu.slice(0, 10),
-    monteur: '',
+    monteur: type === 'lmra' ? '' : instellingen.inspecteur,
     items: buildInitialItems(type),
     groepen: [],
-    rapport: buildRapport(),
+    rapport,
     algemeneOpmerkingen: '',
     aangemaakt: nu,
     bijgewerkt: nu,
@@ -268,6 +362,18 @@ function renderRapportKop(keuring, klanten) {
   const og = r.opdrachtgever;
   return `
     <fieldset class="categorie">
+      <legend>Rapport</legend>
+      <div class="groep__rij">
+        ${tekstVeld('Rapportnummer', 'rapport.rapportnummer', r.rapportnummer)}
+        <label class="veld"><span>Datum inspectie</span><input type="date" data-veld="datum" value="${escapeHtml(keuring.datum)}"></label>
+      </div>
+      <label class="vinkje">
+        <input type="checkbox" data-veld="rapport.zakelijk" ${r.zakelijk ? 'checked' : ''}>
+        <span>Zakelijke klant (herstelverklaring toevoegen aan het rapport)</span>
+      </label>
+    </fieldset>
+
+    <fieldset class="categorie">
       <legend>1. Object</legend>
       <label class="veld">
         <span>Naam object / klant</span>
@@ -306,7 +412,14 @@ function renderRapportKop(keuring, klanten) {
       ${tekstVeld('Naam', 'rapport.instelling.naam', r.instelling.naam)}
       ${tekstVeld('Adres', 'rapport.instelling.adres', r.instelling.adres)}
       ${tekstVeld('Inspecteur', 'monteur', keuring.monteur)}
-      <label class="veld"><span>Datum inspectie</span><input type="date" data-veld="datum" value="${escapeHtml(keuring.datum)}"></label>
+      ${tekstVeld('Toegepaste norm(en)', 'rapport.normen', r.normen)}
+      <p class="groep__subkop">Meetinstrumenten</p>
+      ${r.meetinstrumenten.length === 0 ? '<p class="hint">Geen instrumenten vastgelegd.</p>' : `
+        <ul class="instrumenten">
+          ${r.meetinstrumenten.map((inst) => `<li><strong>${escapeHtml(inst.naam)}</strong> — sn ${escapeHtml(inst.serienummer || 'onbekend')}, gekalibreerd ${escapeHtml(inst.kalibratiedatum || 'onbekend')}</li>`).join('')}
+        </ul>
+      `}
+      <button type="button" class="btn btn--klein" data-actie="instrumenten-overnemen">Overnemen uit instellingen</button>
     </fieldset>
 
     <fieldset class="categorie">
@@ -327,7 +440,14 @@ function renderRapportKop(keuring, klanten) {
     <fieldset class="categorie">
       <legend>6. Kenmerken installatie</legend>
       ${keuzeVeld('Doel van de installatie', 'rapport.doel', r.doel, ['Woning', 'Kantoor', 'Bedrijfshal / werkplaats', 'Winkel', 'Overig'].map((d) => ({ waarde: d, label: d })))}
-      ${keuzeVeld('Stroomstelsel', 'rapport.stroomstelsel', r.stroomstelsel, ['TN-S', 'TN-C-S', 'TT', 'IT'].map((s) => ({ waarde: s, label: s })), 'data-rerender')}
+      <div class="groep__rij">
+        ${keuzeVeld('Netspanning', 'rapport.netspanning', r.netspanning, ['230 V', '230/400 V'].map((s) => ({ waarde: s, label: s })))}
+        ${keuzeVeld('Stroomstelsel', 'rapport.stroomstelsel', r.stroomstelsel, ['TN-S', 'TN-C-S', 'TT', 'IT'].map((s) => ({ waarde: s, label: s })), 'data-rerender')}
+      </div>
+      <div class="groep__rij">
+        ${tekstVeld('Aansluitwaarde', 'rapport.aansluitwaarde', r.aansluitwaarde, 'placeholder="bv. 3x25 A"')}
+        ${tekstVeld('Aantal verdeelinrichtingen', 'rapport.aantalVerdeelinrichtingen', r.aantalVerdeelinrichtingen, 'inputmode="numeric"')}
+      </div>
       ${tekstVak('Wederzijdse beïnvloeding', 'rapport.wederzijdseBeinvloeding', r.wederzijdseBeinvloeding, 'Bv. geen bijzonderheden')}
       ${tekstVak('Uitwendige invloeden', 'rapport.uitwendigeInvloeden', r.uitwendigeInvloeden, 'Bv. vocht, stof, buitenopstelling — of geen bijzonderheden')}
     </fieldset>
@@ -365,9 +485,8 @@ function renderRapportSlot(keuring) {
   return `
     <fieldset class="categorie">
       <legend>Afwijkingen en aanbevelingen</legend>
-      ${tekstVak('Geconstateerde afwijkingen', 'rapport.afwijkingen', r.afwijkingen)}
-      <button type="button" class="btn btn--klein" data-actie="vul-afwijkingen">Vul met afgekeurde punten</button>
-      <div class="ruimte"></div>
+      <p class="hint">Elk afgekeurd punt komt als eigen gebrekenkaart in het rapport, met locatie, ernst, advies en foto's. Hieronder alleen wat daar niet in past.</p>
+      ${tekstVak('Overige afwijkingen', 'rapport.afwijkingen', r.afwijkingen)}
       ${tekstVak('Aanbevelingen', 'rapport.aanbevelingen', r.aanbevelingen)}
     </fieldset>
 
@@ -505,6 +624,7 @@ function renderCategorie(keuring, categorie, fotoUrlMap) {
 }
 
 function renderItem(keuring, item, fotoUrlMap) {
+  const uitgebreid = Boolean(CHECKLISTS[keuring.type].uitgebreidRapport);
   const itemIndex = keuring.items.indexOf(item);
   const resultaten = ['ok', 'afgekeurd', 'n.v.t.'];
   const fotos = item.fotoIds.map((fotoId) => `
@@ -530,7 +650,22 @@ function renderItem(keuring, item, fotoUrlMap) {
           <input type="text" inputmode="decimal" placeholder="bv. 1.2" value="${escapeHtml(item.meetwaarde)}" data-veld="items.${itemIndex}.meetwaarde">
         </label>
       ` : ''}
-      <textarea class="item__opmerking" placeholder="Opmerking" data-veld="items.${itemIndex}.opmerking">${escapeHtml(item.opmerking)}</textarea>
+      <textarea class="item__opmerking" placeholder="${uitgebreid ? 'Opmerking / omschrijving van het gebrek' : 'Opmerking'}" data-veld="items.${itemIndex}.opmerking">${escapeHtml(item.opmerking)}</textarea>
+      ${uitgebreid ? `
+        <div class="gebrek-velden">
+          <p class="groep__subkop">Gebrek — komt als kaart in het rapport</p>
+          <input type="text" class="item__opmerking" placeholder="Locatie, bv. meterkast / hoofdverdeler / badkamer" data-veld="items.${itemIndex}.locatie" value="${escapeHtml(item.locatie)}">
+          <div class="item__resultaten">
+            ${ERNST.map((e) => `
+              <label class="resultaat resultaat--ernst-${e.waarde}">
+                <input type="radio" name="ernst-${itemIndex}" value="${e.waarde}" data-veld="items.${itemIndex}.ernst" ${item.ernst === e.waarde ? 'checked' : ''}>
+                <span>${escapeHtml(e.label)}</span>
+              </label>
+            `).join('')}
+          </div>
+          <textarea class="item__opmerking" placeholder="Advies aan de klant, bv. overspanningsbeveiliging type 2 plaatsen" data-veld="items.${itemIndex}.advies">${escapeHtml(item.advies)}</textarea>
+        </div>
+      ` : ''}
       <div class="item__fotos">${fotos}</div>
       <label class="btn btn--klein">
         Foto toevoegen
@@ -576,16 +711,12 @@ function bindFormEvents(keuring, klanten = []) {
     if ('rerender' in event.target.dataset) renderForm(keuring.id);
   });
 
-  $form.querySelector('[data-actie="vul-afwijkingen"]')?.addEventListener('click', async () => {
-    const afgekeurd = keuring.items.filter((item) => item.resultaat === 'afgekeurd');
-    if (afgekeurd.length === 0) { alert('Er zijn (nog) geen afgekeurde punten.'); return; }
-    const regels = afgekeurd.map((item) => `- ${item.omschrijving.split(' — ')[0]}${item.opmerking ? `: ${item.opmerking}` : ''}`);
-    const huidig = keuring.rapport.afwijkingen.trim();
-    if (huidig && !confirm('Het veld afwijkingen is al ingevuld. Afgekeurde punten eronder toevoegen?')) return;
-    keuring.rapport.afwijkingen = [huidig, ...regels].filter(Boolean).join('\n');
-    $form.querySelector('[data-veld="rapport.afwijkingen"]').value = keuring.rapport.afwijkingen;
+  $form.querySelector('[data-actie="instrumenten-overnemen"]')?.addEventListener('click', async () => {
+    const { instrumenten } = await laadInstellingen();
+    keuring.rapport.meetinstrumenten = instrumenten.map((inst) => ({ ...inst }));
     keuring.bijgewerkt = new Date().toISOString();
     await DB.saveKeuring(keuring);
+    renderForm(keuring.id);
   });
 
   bindHandtekening($form, keuring);

@@ -284,6 +284,22 @@ h2 { margin: 0 0 12px; }
 
 .ruimte { height: 14px; }
 
+a.keuze-kaart { text-decoration: none; margin-top: 10px; }
+
+.instrumenten { margin: 0 0 10px; padding-left: 18px; font-size: 0.9rem; }
+
+/* Gebrek-velden alleen tonen zodra een punt is afgekeurd. */
+.gebrek-velden {
+  display: none;
+  border-left: 3px solid var(--color-rood);
+  padding: 4px 0 4px 12px;
+  margin-bottom: 8px;
+}
+.item:has(input[value="afgekeurd"]:checked) .gebrek-velden { display: block; }
+.resultaat--ernst-rood:has(input:checked) { background: #c62828; border-color: #c62828; color: #fff; }
+.resultaat--ernst-oranje:has(input:checked) { background: #ef6c00; border-color: #ef6c00; color: #fff; }
+.resultaat--ernst-geel:has(input:checked) { background: #f9c80e; border-color: #f9c80e; color: #14181a; }
+
 .handtekening {
   position: relative;
   border: 1px dashed var(--color-muted);

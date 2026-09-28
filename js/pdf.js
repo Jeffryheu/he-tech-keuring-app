@@ -1,7 +1,9 @@
 import {
-  CHECKLISTS, CONCLUSIES, DOCUMENTATIE, MEETSPANNINGEN, GROEP_SOORTEN, uitschakeltijdTekst,
+  CHECKLISTS, MEETSPANNINGEN, GROEP_SOORTEN, uitschakeltijdTekst,
   normaliseerRapport, minimumIsolatie, isolatieTeLaag, isolatieOpvallendLaag,
 } from './checklists.js';
+import { saniteerVoorPdf, truncateText, wrapText } from './pdf-hulp.js';
+import { genereerInspectierapport } from './inspectierapport.js';
 
 const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
 
@@ -11,56 +13,10 @@ const GRIJS = rgb(0x5b / 255, 0x63 / 255, 0x60 / 255);
 const ROOD = rgb(0.7, 0.1, 0.1);
 const A4 = [595.28, 841.89];
 const MARGE = 50;
-const LABEL_BREEDTE = 165;
-
-function saniteerVoorPdf(tekst, font) {
-  const vlak = String(tekst ?? '')
-    .replace(/\r\n|\r|\n/g, ' ')
-    .replace(/Ω/g, 'Ohm')
-    .replace(/∞/g, 'oneindig');
-  try {
-    font.widthOfTextAtSize(vlak, 1);
-    return vlak;
-  } catch {
-    return Array.from(vlak).map((ch) => {
-      try { font.widthOfTextAtSize(ch, 1); return ch; } catch { return '?'; }
-    }).join('');
-  }
-}
-
-function truncateText(tekst, font, size, maxWidth) {
-  let vlak = String(tekst ?? '');
-  if (font.widthOfTextAtSize(vlak, size) <= maxWidth) return vlak;
-  while (vlak.length > 1 && font.widthOfTextAtSize(`${vlak}…`, size) > maxWidth) {
-    vlak = vlak.slice(0, -1);
-  }
-  return `${vlak}…`;
-}
-
-function wrapText(tekst, font, size, maxWidth) {
-  const woorden = String(tekst).split(' ');
-  const regels = [];
-  let huidigeRegel = '';
-  for (const woord of woorden) {
-    const kandidaat = huidigeRegel ? `${huidigeRegel} ${woord}` : woord;
-    if (font.widthOfTextAtSize(kandidaat, size) > maxWidth && huidigeRegel) {
-      regels.push(huidigeRegel);
-      huidigeRegel = woord;
-    } else {
-      huidigeRegel = kandidaat;
-    }
-  }
-  if (huidigeRegel) regels.push(huidigeRegel);
-  return regels;
-}
-
-function datumNl(iso) {
-  if (!iso) return '';
-  const [j, m, d] = iso.split('-');
-  return `${d}-${m}-${j}`;
-}
 
 export async function genereerRapport(keuring, fotos) {
+  if (CHECKLISTS[keuring.type].uitgebreidRapport) return genereerInspectierapport(keuring, fotos);
+
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -68,9 +24,7 @@ export async function genereerRapport(keuring, fotos) {
   const logoImage = await pdfDoc.embedPng(logoBytes);
   const fotosPerId = new Map(fotos.map((f) => [f.id, f]));
   const checklist = CHECKLISTS[keuring.type];
-  const uitgebreid = Boolean(checklist.uitgebreidRapport);
   if (keuring.type !== 'lmra') normaliseerRapport(keuring);
-  const r = keuring.rapport;
   const breedte = A4[0] - MARGE * 2;
   const s = (tekst) => saniteerVoorPdf(tekst, font);
 
@@ -95,15 +49,6 @@ export async function genereerRapport(keuring, fotos) {
     y -= 13;
   }
 
-  // Label links, waarde rechts (meerdere regels mogelijk). Lege waarde wordt '-'.
-  function veldRegel(label, waarde, kleur = INKT) {
-    const regels = wrapText(s(waarde) || '-', font, 10, breedte - LABEL_BREEDTE);
-    zorgVoorRuimte(regels.length * 13 + 2);
-    page.drawText(label, { x: MARGE, y, size: 10, font, color: GRIJS });
-    regels.forEach((regel, i) => page.drawText(regel, { x: MARGE + LABEL_BREEDTE, y: y - i * 13, size: 10, font, color: kleur }));
-    y -= regels.length * 13 + 2;
-  }
-
   function alinea(tekst, { size = 10, kleur = INKT, vet = false } = {}) {
     const f = vet ? fontBold : font;
     const regels = wrapText(saniteerVoorPdf(tekst, f), f, size, breedte);
@@ -118,90 +63,28 @@ export async function genereerRapport(keuring, fotos) {
   // Header
   page.drawImage(logoImage, { x: MARGE, y: y - 40, width: 40, height: 40 });
   page.drawText('He-Tech Elektro', { x: MARGE + 50, y: y - 15, size: 16, font: fontBold, color: GROEN });
-  const titel = uitgebreid ? 'Inspectierapport — oplevering elektrische installatie' : `${checklist.label} (${checklist.subtitel})`;
-  page.drawText(titel, { x: MARGE + 50, y: y - 33, size: 11, font, color: GRIJS });
+  page.drawText(`${checklist.label} (${checklist.subtitel})`, { x: MARGE + 50, y: y - 33, size: 11, font, color: GRIJS });
   y -= 60;
 
+  // Kopgegevens
+  const kopregels = keuring.type === 'lmra'
+    ? [`Werkzaamheden: ${s(keuring.werkzaamheden) || '-'}`, `Betrokkenen: ${s(keuring.betrokkenen) || '-'}`, `Datum: ${keuring.datum}`]
+    : [`Klant: ${s(keuring.klant.naam) || '-'}`, `Adres: ${s(keuring.klant.adres) || '-'}`, `Datum: ${keuring.datum}`, `Monteur: ${s(keuring.monteur) || '-'}`];
+  kopregels.forEach((regel) => {
+    page.drawText(regel, { x: MARGE, y, size: 11, font, color: INKT });
+    y -= 16;
+  });
+  y -= 10;
+
   const aantalAfgekeurd = keuring.items.filter((item) => item.resultaat === 'afgekeurd').length;
-  const conclusie = CONCLUSIES.find((c) => c.waarde === r?.conclusie);
-
-  if (uitgebreid) {
-    // Samenvatting bovenaan: in één oogopslag waar de installatie staat.
-    const samenvatting = conclusie
-      ? `Conclusie: ${conclusie.label.toLowerCase()} aan ${checklist.subtitel}. ${keuring.items.length} punten gecontroleerd, ${aantalAfgekeurd} afgekeurd.`
-      : `${keuring.items.length} punten gecontroleerd, ${aantalAfgekeurd} afgekeurd.`;
-    alinea(samenvatting, { size: 11, vet: true, kleur: aantalAfgekeurd > 0 || r.conclusie === 'niet' ? ROOD : GROEN });
-    y -= 6;
-
-    const og = r.opdrachtgever.zelfdeAlsObject
-      ? { naam: keuring.klant.naam, adres: keuring.klant.adres, ...r.object }
-      : r.opdrachtgever;
-
-    sectieKop('1. Object');
-    veldRegel('Naam object', keuring.klant.naam);
-    veldRegel('Adres', keuring.klant.adres);
-    veldRegel('Contactpersoon', r.object.contactpersoon);
-    veldRegel('Contactgegevens', [r.object.telefoon, r.object.email].filter(Boolean).join(' · '));
-
-    sectieKop('2. Opdrachtgever');
-    if (r.opdrachtgever.zelfdeAlsObject) {
-      veldRegel('Opdrachtgever', 'Zelfde als object');
-    } else {
-      veldRegel('Naam', og.naam);
-      veldRegel('Adres', og.adres);
-      veldRegel('Contactpersoon', og.contactpersoon);
-      veldRegel('Contactgegevens', [og.telefoon, og.email].filter(Boolean).join(' · '));
-    }
-
-    sectieKop('3. Inspectie-instelling');
-    veldRegel('Naam', r.instelling.naam);
-    veldRegel('Adres', r.instelling.adres);
-    veldRegel('Inspecteur', keuring.monteur);
-    veldRegel('Datum inspectie', datumNl(keuring.datum));
-
-    sectieKop('4. Soort inspectie');
-    veldRegel('Soort', r.soortInstallatie === 'uitbreiding' ? 'Uitbreiding van een installatie' : 'Nieuwe installatie');
-    veldRegel('Jaar van aanleg', r.jaarAanleg);
-
-    sectieKop('5. Uitvoering en omvang');
-    veldRegel('Uitvoering', r.uitvoering);
-    veldRegel('Niet geïnspecteerd', r.nietGeinspecteerd || 'Geen — de installatie is volledig geïnspecteerd');
-
-    sectieKop('6. Kenmerken installatie');
-    veldRegel('Doel', r.doel);
-    veldRegel('Stroomstelsel', r.stroomstelsel);
-    veldRegel('Wederzijdse beïnvloeding', r.wederzijdseBeinvloeding);
-    veldRegel('Uitwendige invloeden', r.uitwendigeInvloeden);
-
-    sectieKop('7. Gebruikte documentatie');
-    const docs = DOCUMENTATIE.filter((d) => r.documentatie[d.sleutel]).map((d) => d.label);
-    if (r.documentatie.overig) docs.push(r.documentatie.overig);
-    veldRegel('Documentatie', docs.join(', '));
-
-    sectieKop('8. Inspectiefrequentie');
-    const frequentie = { 1: 'Elk jaar', 3: 'Elke 3 jaar', 5: 'Elke 5 jaar', anders: 'Afwijkend, zie datum' }[r.frequentie];
-    veldRegel('Frequentie', frequentie);
-    veldRegel('Volgende inspectie', datumNl(r.volgendeInspectie));
-    y -= 8;
-  } else {
-    // Kopgegevens (periodiek / LMRA)
-    const kopregels = keuring.type === 'lmra'
-      ? [`Werkzaamheden: ${s(keuring.werkzaamheden) || '-'}`, `Betrokkenen: ${s(keuring.betrokkenen) || '-'}`, `Datum: ${keuring.datum}`]
-      : [`Klant: ${s(keuring.klant.naam) || '-'}`, `Adres: ${s(keuring.klant.adres) || '-'}`, `Datum: ${keuring.datum}`, `Monteur: ${s(keuring.monteur) || '-'}`];
-    kopregels.forEach((regel) => {
-      page.drawText(regel, { x: MARGE, y, size: 11, font, color: INKT });
-      y -= 16;
-    });
-    y -= 10;
-
-    page.drawText(`Samenvatting: ${keuring.items.length} punten gecontroleerd, ${aantalAfgekeurd} afgekeurd.`, {
-      x: MARGE, y, size: 11, font: fontBold, color: aantalAfgekeurd > 0 ? ROOD : GROEN,
-    });
-    y -= 24;
-  }
+  page.drawText(`Samenvatting: ${keuring.items.length} punten gecontroleerd, ${aantalAfgekeurd} afgekeurd.`, {
+    x: MARGE, y, size: 11, font: fontBold, color: aantalAfgekeurd > 0 ? ROOD : GROEN,
+  });
+  y -= 24;
 
   // Groepentabel
   if (keuring.type !== 'lmra' && keuring.groepen && keuring.groepen.length > 0) {
+    const r = keuring.rapport;
     const meetspanning = r.meetspanning;
     const KOLOMMEN = [
       { label: 'Nr.', x: 0, w: 22 },
@@ -234,20 +117,20 @@ export async function genereerRapport(keuring, fotos) {
         : '-';
       const waarden = [
         String(groep.nummer ?? ''),
-        truncateText(s(groep.naam), font, 8, 78),
+        s(groep.naam),
         s(groep.isolatie.l1pe),
         driefase ? s(groep.isolatie.l2pe) : '',
         driefase ? s(groep.isolatie.l3pe) : '',
         s(groep.isolatie.npe),
         s(groep.zs),
-        truncateText(zekDoorsnede, font, 8, 63),
-        truncateText(s(aardlekTekst), font, 8, 102),
+        zekDoorsnede,
+        s(aardlekTekst),
       ];
       const rijKleur = groep.aardlekAanwezig && groep.aardlek.testknop === 'afgekeurd' ? ROOD : INKT;
       KOLOMMEN.forEach((kol, i) => {
         const isolatieSleutel = ISOLATIE_KOLOMMEN[i];
         const teLaag = isolatieSleutel && isolatieTeLaag(groep.isolatie[isolatieSleutel], meetspanning);
-        page.drawText(truncateText(waarden[i], font, 8, kol.w), {
+        page.drawText(truncateText(waarden[i], font, 8, kol.w - 2), {
           x: MARGE + kol.x, y, size: 8, font: teLaag ? fontBold : font, color: teLaag ? ROOD : rijKleur,
         });
       });
@@ -316,53 +199,13 @@ export async function genereerRapport(keuring, fotos) {
     y -= 6;
   }
 
-  if (uitgebreid) {
-    sectieKop('Afwijkingen en aanbevelingen');
-    const afwijkingen = String(r.afwijkingen || '').split('\n').map((regel) => regel.trim()).filter(Boolean);
-    page.drawText('Geconstateerde afwijkingen', { x: MARGE, y, size: 10, font: fontBold, color: INKT });
-    y -= 14;
-    if (afwijkingen.length === 0) alinea('Geen afwijkingen geconstateerd.');
-    afwijkingen.forEach((regel) => alinea(regel, { kleur: ROOD }));
-    y -= 6;
-    zorgVoorRuimte(30);
-    page.drawText('Aanbevelingen', { x: MARGE, y, size: 10, font: fontBold, color: INKT });
-    y -= 14;
-    String(r.aanbevelingen || '-').split('\n').filter((regel) => regel.trim()).forEach((regel) => alinea(regel));
-    y -= 6;
-  }
-
   if (keuring.algemeneOpmerkingen) {
     sectieKop('Algemene opmerkingen');
     alinea(keuring.algemeneOpmerkingen);
     y -= 6;
   }
 
-  if (uitgebreid) {
-    sectieKop('Conclusie');
-    const conclusieTekst = conclusie
-      ? `De elektrische installatie ${conclusie.label.toLowerCase()} aan ${checklist.subtitel}.`
-      : 'Nog geen conclusie vastgelegd.';
-    alinea(conclusieTekst, { size: 12, vet: true, kleur: r.conclusie === 'geheel' ? GROEN : r.conclusie ? ROOD : GRIJS });
-    if (r.conclusieToelichting) {
-      y -= 2;
-      String(r.conclusieToelichting).split('\n').filter((regel) => regel.trim()).forEach((regel) => alinea(regel));
-    }
-    y -= 6;
-
-    sectieKop('Ondertekening');
-    zorgVoorRuimte(110);
-    veldRegel('Inspecteur', keuring.monteur);
-    veldRegel('Datum ondertekening', datumNl(r.datumOndertekening));
-    if (r.handtekening) {
-      const handtekening = await pdfDoc.embedPng(r.handtekening);
-      const w = 180;
-      const h = w * (handtekening.height / handtekening.width);
-      page.drawImage(handtekening, { x: MARGE + LABEL_BREEDTE, y: y - h, width: w, height: h });
-      y -= h + 4;
-    } else {
-      veldRegel('Handtekening', 'Niet ondertekend', ROOD);
-    }
-  } else if (keuring.type !== 'lmra') {
+  if (keuring.type !== 'lmra') {
     const conclusieTekst = aantalAfgekeurd === 0
       ? `Conclusie: de installatie voldoet aan de eisen van ${checklist.subtitel}.`
       : `Conclusie: de installatie voldoet niet volledig aan de eisen van ${checklist.subtitel} — zie geconstateerde gebreken hierboven. Herstel wordt geadviseerd.`;
