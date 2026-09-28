@@ -215,6 +215,18 @@ export function normaliseerRapport(keuring) {
   return keuring;
 }
 
+export const FASES = ['1-fase', '2-fase', '3-fase'];
+
+// Welke isolatiemetingen horen bij een groep: L2 vanaf 2-fase, L3 alleen bij 3-fase.
+export function isolatieMetingen(fase) {
+  return [
+    { sleutel: 'l1pe', label: 'L1-PE' },
+    ...(fase === '2-fase' || fase === '3-fase' ? [{ sleutel: 'l2pe', label: 'L2-PE' }] : []),
+    ...(fase === '3-fase' ? [{ sleutel: 'l3pe', label: 'L3-PE' }] : []),
+    { sleutel: 'npe', label: 'N-PE' },
+  ];
+}
+
 export const MEETSPANNINGEN = [
   { waarde: '250', label: '250 V DC — SELV- en PELV-ketens', minimum: 0.5 },
   { waarde: '500', label: '500 V DC — stroomketens t/m 500 V (incl. FELV)', minimum: 1.0 },
@@ -244,7 +256,7 @@ export function isolatieTeLaag(waarde, meetspanning) {
 // lager scoort dan de beste groep verdient nader onderzoek, ook als hij het minimum haalt.
 export function isolatieOpvallendLaag(keuring) {
   const perGroep = (keuring.groepen || []).map((groep) => {
-    const waarden = Object.values(groep.isolatie).map(leesIsolatie).filter((w) => w !== null && w !== Infinity);
+    const waarden = isolatieMetingen(groep.fase).map((m) => leesIsolatie(groep.isolatie[m.sleutel])).filter((w) => w !== null && w !== Infinity);
     return waarden.length ? Math.min(...waarden) : null;
   });
   const gemeten = perGroep.filter((w) => w !== null);
@@ -260,6 +272,7 @@ export function isolatieOpvallendLaag(keuring) {
 export const GROEP_SOORTEN = [
   { waarde: 'eind-wcd', label: 'Eindgroep met wandcontactdozen (t/m 63 A)', lang: false },
   { waarde: 'eind-vast', label: 'Eindgroep zonder wandcontactdozen (t/m 32 A)', lang: false },
+  { waarde: 'kookgroep', label: 'Kookgroep (perilex / kookplaat)', lang: false },
   { waarde: 'distributie', label: 'Distributiegroep (voeding onderverdeler)', lang: true },
   { waarde: 'eind-vast-groot', label: 'Eindgroep zonder wandcontactdozen, boven 32 A', lang: true },
   { waarde: 'eind-wcd-groot', label: 'Eindgroep met wandcontactdozen, boven 63 A', lang: true },

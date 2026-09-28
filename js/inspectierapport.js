@@ -2,7 +2,7 @@
 // inspectie en metingen, meetresultaten per groep, gebrekenkaarten, conclusie en (voor zakelijke
 // klanten) een herstelverklaring.
 import {
-  CHECKLISTS, CONCLUSIES, DOCUMENTATIE, MEETSPANNINGEN, GROEP_SOORTEN, ERNST,
+  CHECKLISTS, CONCLUSIES, DOCUMENTATIE, MEETSPANNINGEN, GROEP_SOORTEN, ERNST, isolatieMetingen,
   normaliseerRapport, minimumIsolatie, isolatieTeLaag, isolatieOpvallendLaag,
   uitschakeltijdTekst, korteTitel,
 } from './checklists.js';
@@ -413,14 +413,14 @@ export async function genereerInspectierapport(keuring, fotos) {
       const hoogte = groep.opmerking ? 36 : 25;
       if (y - hoogte < ONDER) { nieuwePagina(); tabelKop(); }
       if (i % 2 === 1) page.drawRectangle({ x: MARGE, y: y - hoogte + 10, width: BREEDTE, height: hoogte, color: VLAK });
-      const driefase = groep.fase === '3-fase';
+      const gemeten = new Set(isolatieMetingen(groep.fase).map((m) => m.sleutel));
       const aardlekFout = groep.aardlekAanwezig && groep.aardlek.testknop === 'afgekeurd';
       const waarden = [
         String(groep.nummer ?? ''),
         s(groep.naam),
         s(groep.isolatie.l1pe),
-        driefase ? s(groep.isolatie.l2pe) : '',
-        driefase ? s(groep.isolatie.l3pe) : '',
+        gemeten.has('l2pe') ? s(groep.isolatie.l2pe) : '',
+        gemeten.has('l3pe') ? s(groep.isolatie.l3pe) : '',
         s(groep.isolatie.npe),
         s(groep.zs),
         [groep.zekering ? `${groep.zekering} A` : '', groep.aderdoorsnede ? `${groep.aderdoorsnede} mm²` : ''].filter(Boolean).join(' / '),
@@ -429,12 +429,12 @@ export async function genereerInspectierapport(keuring, fotos) {
           : '-',
       ];
       KOLOMMEN.forEach((kol, k) => {
-        const teLaag = ISOLATIE[k] && isolatieTeLaag(groep.isolatie[ISOLATIE[k]], r.meetspanning);
+        const teLaag = ISOLATIE[k] && gemeten.has(ISOLATIE[k]) && isolatieTeLaag(groep.isolatie[ISOLATIE[k]], r.meetspanning);
         const fout = teLaag || (k === 8 && aardlekFout);
         tekst(truncateText(waarden[k], fout ? vet : font, 8.5, kol.w - 2), MARGE + kol.x, y, { size: 8.5, f: fout ? vet : font, kleur: fout ? ROOD : INKT });
       });
       const soort = GROEP_SOORTEN.find((g) => g.waarde === (groep.soort || 'eind-wcd'));
-      tekst(truncateText(s(`${soort.label} · uitschakeltijd ${uitschakeltijdTekst(soort.waarde, r.stroomstelsel)}`), font, 7, BREEDTE - 40), MARGE + 28, y - 11, { size: 7, kleur: GRIJS });
+      tekst(truncateText(s(`${soort.label}, ${groep.fase || '1-fase'} · uitschakeltijd ${uitschakeltijdTekst(soort.waarde, r.stroomstelsel)}`), font, 7, BREEDTE - 40), MARGE + 28, y - 11, { size: 7, kleur: GRIJS });
       if (groep.opmerking) tekst(truncateText(s(`Opmerking: ${groep.opmerking}`), font, 7.5, BREEDTE - 40), MARGE + 28, y - 22, { size: 7.5, kleur: GRIJS });
       y -= hoogte;
     });

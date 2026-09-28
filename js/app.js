@@ -1,6 +1,6 @@
 import * as DB from './db.js';
 import {
-  CHECKLISTS, CONCLUSIES, DOCUMENTATIE, MEETSPANNINGEN, GROEP_SOORTEN, ERNST, STANDAARD_INSTRUMENTEN, uitschakeltijdTekst,
+  CHECKLISTS, CONCLUSIES, DOCUMENTATIE, MEETSPANNINGEN, GROEP_SOORTEN, ERNST, FASES, isolatieMetingen, STANDAARD_INSTRUMENTEN, uitschakeltijdTekst,
   buildInitialItems, buildGroep, buildRapport, normaliseerRapport, stelConclusieVoor,
   minimumIsolatie, isolatieTeLaag, isolatieOpvallendLaag,
 } from './checklists.js';
@@ -560,7 +560,7 @@ function isolatieInput(label, veld, waarde, meetspanning) {
 }
 
 function renderGroep(groep, i, meetspanning, stroomstelsel) {
-  const driefase = groep.fase === '3-fase';
+  const fase = groep.fase || '1-fase';
   const soort = groep.soort || 'eind-wcd';
   return `
     <div class="groep" data-groep-index="${i}">
@@ -576,8 +576,7 @@ function renderGroep(groep, i, meetspanning, stroomstelsel) {
       <label class="veld">
         <span>Fase</span>
         <select class="groep__fase" data-groep-index="${i}">
-          <option value="1-fase" ${!driefase ? 'selected' : ''}>1-fase</option>
-          <option value="3-fase" ${driefase ? 'selected' : ''}>3-fase</option>
+          ${FASES.map((f) => `<option value="${f}" ${f === fase ? 'selected' : ''}>${f}</option>`).join('')}
         </select>
       </label>
       <div class="groep__rij">
@@ -586,12 +585,7 @@ function renderGroep(groep, i, meetspanning, stroomstelsel) {
       </div>
       <p class="groep__subkop">Isolatieweerstand (MΩ)</p>
       <div class="groep__rij">
-        ${isolatieInput('L1-PE', `groepen.${i}.isolatie.l1pe`, groep.isolatie.l1pe, meetspanning)}
-        ${isolatieInput('N-PE', `groepen.${i}.isolatie.npe`, groep.isolatie.npe, meetspanning)}
-        ${driefase ? `
-          ${isolatieInput('L2-PE', `groepen.${i}.isolatie.l2pe`, groep.isolatie.l2pe, meetspanning)}
-          ${isolatieInput('L3-PE', `groepen.${i}.isolatie.l3pe`, groep.isolatie.l3pe, meetspanning)}
-        ` : ''}
+        ${isolatieMetingen(fase).map((m) => isolatieInput(m.label, `groepen.${i}.isolatie.${m.sleutel}`, groep.isolatie[m.sleutel], meetspanning)).join('')}
       </div>
       <label class="veld"><span>Lusimpedantie Zs (Ω)</span><input type="text" inputmode="decimal" data-veld="groepen.${i}.zs" value="${escapeHtml(groep.zs)}"></label>
       <label class="groep__aardlek-toggle">
@@ -691,6 +685,13 @@ function bindFormEvents(keuring, klanten = []) {
       const opvallend = isolatieOpvallendLaag(keuring);
       $signaal.textContent = opvallendTekst(opvallend);
       $signaal.hidden = opvallend.length === 0;
+    }
+    // Kookgroep: meestal 2-fase, dus meteen goed zetten (3-fase kan daarna nog gekozen worden).
+    const soortMatch = veld.match(/^groepen\.(\d+)\.soort$/);
+    if (soortMatch && waarde === 'kookgroep') {
+      const groep = keuring.groepen[Number(soortMatch[1])];
+      if ((groep.fase || '1-fase') === '1-fase') groep.fase = '2-fase';
+      if (!groep.naam.trim()) groep.naam = 'Kookgroep';
     }
     if (event.target.dataset.actie === 'frequentie' && /^\d+$/.test(waarde)) {
       const volgende = new Date(`${keuring.datum}T12:00:00`);

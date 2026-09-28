@@ -1,5 +1,5 @@
 import {
-  CHECKLISTS, MEETSPANNINGEN, GROEP_SOORTEN, uitschakeltijdTekst,
+  CHECKLISTS, MEETSPANNINGEN, GROEP_SOORTEN, uitschakeltijdTekst, isolatieMetingen,
   normaliseerRapport, minimumIsolatie, isolatieTeLaag, isolatieOpvallendLaag,
 } from './checklists.js';
 import { saniteerVoorPdf, truncateText, wrapText } from './pdf-hulp.js';
@@ -109,7 +109,7 @@ export async function genereerRapport(keuring, fotos) {
 
     for (const groep of keuring.groepen) {
       zorgVoorRuimte(24);
-      const driefase = groep.fase === '3-fase';
+      const gemeten = new Set(isolatieMetingen(groep.fase).map((m) => m.sleutel));
       const zekDoorsnede = [groep.zekering ? `${groep.zekering}A` : '', groep.aderdoorsnede ? `${groep.aderdoorsnede}mm²` : '']
         .filter(Boolean).join(' / ');
       const aardlekTekst = groep.aardlekAanwezig
@@ -119,8 +119,8 @@ export async function genereerRapport(keuring, fotos) {
         String(groep.nummer ?? ''),
         s(groep.naam),
         s(groep.isolatie.l1pe),
-        driefase ? s(groep.isolatie.l2pe) : '',
-        driefase ? s(groep.isolatie.l3pe) : '',
+        gemeten.has('l2pe') ? s(groep.isolatie.l2pe) : '',
+        gemeten.has('l3pe') ? s(groep.isolatie.l3pe) : '',
         s(groep.isolatie.npe),
         s(groep.zs),
         zekDoorsnede,
@@ -129,7 +129,7 @@ export async function genereerRapport(keuring, fotos) {
       const rijKleur = groep.aardlekAanwezig && groep.aardlek.testknop === 'afgekeurd' ? ROOD : INKT;
       KOLOMMEN.forEach((kol, i) => {
         const isolatieSleutel = ISOLATIE_KOLOMMEN[i];
-        const teLaag = isolatieSleutel && isolatieTeLaag(groep.isolatie[isolatieSleutel], meetspanning);
+        const teLaag = isolatieSleutel && gemeten.has(isolatieSleutel) && isolatieTeLaag(groep.isolatie[isolatieSleutel], meetspanning);
         page.drawText(truncateText(waarden[i], font, 8, kol.w - 2), {
           x: MARGE + kol.x, y, size: 8, font: teLaag ? fontBold : font, color: teLaag ? ROOD : rijKleur,
         });
