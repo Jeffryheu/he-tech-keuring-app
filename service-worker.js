@@ -1,4 +1,4 @@
-const CACHE_NAME = 'keuring-app-v12';
+const CACHE_NAME = 'keuring-app-v13';
 const APP_SHELL = [
   './',
   './index.html',
@@ -20,7 +20,9 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    // cache: 'reload' slaat de HTTP-cache van de browser over (GitHub Pages: max-age=600),
+    // anders kan een nieuwe cacheversie met oude bestanden gevuld worden.
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL.map((url) => new Request(url, { cache: 'reload' }))))
   );
   self.skipWaiting();
 });

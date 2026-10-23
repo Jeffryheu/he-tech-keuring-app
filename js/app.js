@@ -878,6 +878,10 @@ async function deelRapport(keuring) {
   }
 }
 
+// Gelijk houden met CACHE_NAME in service-worker.js; staat rechtsboven zodat te zien is welke versie draait.
+const APP_VERSIE = 'v13';
+document.querySelector('.topbar')?.insertAdjacentHTML('beforeend', `<span class="topbar__versie">${APP_VERSIE}</span>`);
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./service-worker.js');
