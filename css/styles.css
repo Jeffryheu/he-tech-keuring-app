@@ -313,3 +313,17 @@ a.keuze-kaart { text-decoration: none; margin-top: 10px; }
   display: flex; align-items: center; justify-content: center;
   color: #9aa39e; pointer-events: none; font-size: 0.9rem;
 }
+
+.deel-dialog {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  padding: 1.25rem;
+  max-width: 22rem;
+  width: calc(100% - 32px);
+}
+.deel-dialog::backdrop { background: rgba(20, 24, 26, 0.45); }
+.deel-dialog .hint { color: var(--color-muted); font-size: 0.85rem; word-break: break-all; }
+.deel-dialog__acties { display: flex; gap: 0.5rem; margin-top: 1rem; }
+.deel-dialog__acties .btn { flex: 1; }

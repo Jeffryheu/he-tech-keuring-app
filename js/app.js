@@ -872,7 +872,7 @@ async function deelRapport(keuring) {
     await deelPdf(pdfBytes, bestandsnaam);
   } catch (err) {
     if (err.name !== 'AbortError') {
-      alert('Delen is mislukt. Probeer het later opnieuw via de knop "Deel opnieuw".');
+      alert(`Delen is mislukt (${err.name}: ${err.message}). Probeer het later opnieuw via de knop "Deel opnieuw".`);
       console.error(err);
     }
   }
